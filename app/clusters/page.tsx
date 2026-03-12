@@ -539,13 +539,12 @@ export default function ClustersPage() {
     [hitTest]
   );
 
-  const handleTouchMove = useCallback((e: React.TouchEvent<HTMLCanvasElement>) => {
+  const handleTouchMove = useCallback((e: TouchEvent) => {
     e.preventDefault();
     if (e.touches.length === 1) {
       const touch = e.touches[0];
       const drag = dragRef.current;
       if (drag.isDragging) {
-        // Pan the canvas
         const dx = touch.clientX - drag.startX;
         const dy = touch.clientY - drag.startY;
         transformRef.current.x += dx;
@@ -558,10 +557,11 @@ export default function ClustersPage() {
       const dy = e.touches[1].clientY - e.touches[0].clientY;
       const dist = Math.sqrt(dx * dx + dy * dy);
       const factor = dist / (lastTouchRef.current.dist || dist);
-      // Zoom toward the midpoint between the two fingers
       const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
       const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-      const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
       const cx = midX - rect.left;
       const cy = midY - rect.top;
       const { x: tx, y: ty, scale } = transformRef.current;
@@ -607,6 +607,14 @@ export default function ClustersPage() {
     },
     [hitTest]
   );
+
+  // Register touchmove with { passive: false } so preventDefault() works on mobile
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.addEventListener("touchmove", handleTouchMove, { passive: false });
+    return () => canvas.removeEventListener("touchmove", handleTouchMove);
+  }, [handleTouchMove]);
 
   // ---------------------------------------------------------------------------
   // Derived state for selected point panel
@@ -832,7 +840,6 @@ export default function ClustersPage() {
           onMouseLeave={handleMouseLeave}
           onWheel={handleWheel}
           onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
           aria-label="Topic clusters scatter plot"
           role="img"
