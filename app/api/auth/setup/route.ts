@@ -43,7 +43,9 @@ export async function GET() {
   }
 
   const uri = getTotpUri(totpSecret);
-  const qrCodeDataUrl = await QRCode.toDataURL(uri);
+  // Use SVG output — pure JS, no native canvas dependency (works on Vercel)
+  const svgString = await QRCode.toString(uri, { type: "svg" });
+  const qrCodeDataUrl = `data:image/svg+xml;base64,${Buffer.from(svgString).toString("base64")}`;
 
   // C-3: Only return QR code data URL — do NOT return raw TOTP secret
   return NextResponse.json({
