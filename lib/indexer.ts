@@ -9,6 +9,7 @@ import {
   indexHasItems,
 } from "./vector";
 import type { VectorMetadata } from "./vector";
+import { getAllNotes, isServerlessMode } from "./vault";
 
 const VAULT_PATH = process.env.VAULT_PATH!;
 const VOYAGE_API_KEY = process.env.VOYAGE_API_KEY!;
@@ -62,24 +63,132 @@ function collectMarkdownFiles(dir: string): string[] {
 }
 
 export async function buildIndex(): Promise<void> {
-  if (!VAULT_PATH) throw new Error("VAULT_PATH is not set in environment");
-
   // Clear existing index for a clean re-index
   await resetIndex();
 
-  const files = collectMarkdownFiles(VAULT_PATH);
-  console.log(`Indexing ${files.length} notes...`);
+  if (isServerlessMode()) {
+    // Serverless: read vault content from Redis
+    const notes = await getAllNotes();
+    console.log(`Indexing ${notes.length} notes from Redis...`);
 
-  let indexed = 0;
+    let indexed = 0;
+    const EMBED_BATCH_SIZE = 20;
 
-  for (const filePath of files) {
-    const raw = fs.readFileSync(filePath, "utf-8");
+    for (const note of notes) {
+      const chunks = chunkText(note.content);
+      if (chunks.length === 0) continue;
+
+      // Embed in batches
+      for (let i = 0; i < chunks.length; i += EMBED_BATCH_SIZE) {
+        const batch = chunks.slice(i, i + EMBED_BATCH_SIZE);
+        const embeddings = await embedTexts(batch);
+
+        const items = batch.map((text, j) => ({
+          id: `${note.path}#chunk${i + j}`,
+          vector: embeddings[j],
+          metadata: {
+            path: note.path,
+            name: note.name,
+            chunk: i + j,
+            text,
+            tags: note.tags,
+          } as VectorMetadata,
+        }));
+
+        await upsertVectors(items);
+      }
+
+      indexed++;
+      if (indexed % 50 === 0) console.log(`  ${indexed}/${notes.length} notes indexed`);
+    }
+
+    console.log(`Done. ${indexed} notes indexed.`);
+  } else {
+    // Local: read from filesystem
+    if (!VAULT_PATH) throw new Error("VAULT_PATH is not set in environment");
+
+    const files = collectMarkdownFiles(VAULT_PATH);
+    console.log(`Indexing ${files.length} notes from filesystem...`);
+
+    let indexed = 0;
+
+    for (const filePath of files) {
+      const raw = fs.readFileSync(filePath, "utf-8");
+      const { content, data: frontmatter } = matter(raw);
+      const relativePath = path.relative(VAULT_PATH, filePath);
+      const noteName = path.basename(filePath, ".md");
+
+      const chunks = chunkText(content);
+      if (chunks.length === 0) continue;
+
+      const embeddings = await embedTexts(chunks);
+
+      const items = chunks.map((text, i) => ({
+        id: `${relativePath}#chunk${i}`,
+        vector: embeddings[i],
+        metadata: {
+          path: relativePath,
+          name: noteName,
+          chunk: i,
+          text,
+          tags: frontmatter.tags ?? [],
+        } as VectorMetadata,
+      }));
+
+      await upsertVectors(items);
+
+      indexed++;
+      if (indexed % 50 === 0) console.log(`  ${indexed}/${files.length} notes indexed`);
+    }
+
+    console.log(`Done. ${indexed} notes indexed.`);
+  }
+}
+
+export async function removeFileFromIndex(relativePath: string): Promise<void> {
+  await deleteVectorsByPath(relativePath);
+}
+
+export async function indexSingleFile(filePathOrRelative: string): Promise<void> {
+  if (isServerlessMode()) {
+    // In serverless mode, the argument is a relative path — read from Redis
+    const { getNote } = await import("./vault");
+    const note = await getNote(filePathOrRelative);
+    if (!note) return;
+
+    await removeFileFromIndex(note.path);
+
+    const chunks = chunkText(note.content);
+    if (chunks.length === 0) return;
+
+    const embeddings = await embedTexts(chunks);
+
+    const items = chunks.map((text, i) => ({
+      id: `${note.path}#chunk${i}`,
+      vector: embeddings[i],
+      metadata: {
+        path: note.path,
+        name: note.name,
+        chunk: i,
+        text,
+        tags: note.tags,
+      } as VectorMetadata,
+    }));
+
+    await upsertVectors(items);
+  } else {
+    if (!VAULT_PATH) throw new Error("VAULT_PATH is not set in environment");
+
+    const relativePath = path.relative(VAULT_PATH, filePathOrRelative);
+
+    await removeFileFromIndex(relativePath);
+
+    const raw = fs.readFileSync(filePathOrRelative, "utf-8");
     const { content, data: frontmatter } = matter(raw);
-    const relativePath = path.relative(VAULT_PATH, filePath);
-    const noteName = path.basename(filePath, ".md");
+    const noteName = path.basename(filePathOrRelative, ".md");
 
     const chunks = chunkText(content);
-    if (chunks.length === 0) continue;
+    if (chunks.length === 0) return;
 
     const embeddings = await embedTexts(chunks);
 
@@ -96,48 +205,7 @@ export async function buildIndex(): Promise<void> {
     }));
 
     await upsertVectors(items);
-
-    indexed++;
-    if (indexed % 50 === 0) console.log(`  ${indexed}/${files.length} notes indexed`);
   }
-
-  console.log(`Done. ${indexed} notes indexed.`);
-}
-
-export async function removeFileFromIndex(relativePath: string): Promise<void> {
-  await deleteVectorsByPath(relativePath);
-}
-
-export async function indexSingleFile(filePath: string): Promise<void> {
-  if (!VAULT_PATH) throw new Error("VAULT_PATH is not set in environment");
-
-  const relativePath = path.relative(VAULT_PATH, filePath);
-
-  // Remove any existing chunks for this file before re-inserting
-  await removeFileFromIndex(relativePath);
-
-  const raw = fs.readFileSync(filePath, "utf-8");
-  const { content, data: frontmatter } = matter(raw);
-  const noteName = path.basename(filePath, ".md");
-
-  const chunks = chunkText(content);
-  if (chunks.length === 0) return;
-
-  const embeddings = await embedTexts(chunks);
-
-  const items = chunks.map((text, i) => ({
-    id: `${relativePath}#chunk${i}`,
-    vector: embeddings[i],
-    metadata: {
-      path: relativePath,
-      name: noteName,
-      chunk: i,
-      text,
-      tags: frontmatter.tags ?? [],
-    } as VectorMetadata,
-  }));
-
-  await upsertVectors(items);
 }
 
 export async function queryIndex(
