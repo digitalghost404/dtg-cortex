@@ -503,11 +503,13 @@ export default function LineagePage() {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "0.75rem 1.5rem",
+          padding: "0.75rem 1rem",
           position: "sticky",
           top: 0,
           zIndex: 20,
           background: "var(--bg-deep)",
+          flexWrap: "wrap",
+          gap: "0.5rem",
         }}
       >
         {/* Left: back link + title */}
@@ -603,7 +605,7 @@ export default function LineagePage() {
       </header>
 
       {/* ── Content ─────────────────────────────────────────────────────────── */}
-      <main style={{ maxWidth: "1400px", margin: "0 auto", padding: "1.5rem" }}>
+      <main style={{ maxWidth: "1400px", margin: "0 auto", padding: "1.5rem 1rem", width: "100%" }}>
         {loading && !stats && <LoadingState />}
 
         {error && (

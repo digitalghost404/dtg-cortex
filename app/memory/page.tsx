@@ -223,7 +223,7 @@ export default function MemoryPage() {
     >
       {/* Header */}
       <header
-        className="flex items-center justify-between px-6 py-3 hud-header-rule hud-enter"
+        className="flex items-center justify-between flex-wrap gap-2 px-4 py-3 hud-header-rule hud-enter"
         style={{ position: "sticky", top: 0, zIndex: 10, background: "var(--bg-deep)" }}
       >
         <div className="flex items-center gap-4">
@@ -277,7 +277,8 @@ export default function MemoryPage() {
         style={{
           maxWidth: 900,
           margin: "0 auto",
-          padding: "2rem 1.5rem",
+          padding: "1.5rem 1rem",
+          width: "100%",
         }}
       >
         {/* Add form */}

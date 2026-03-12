@@ -168,6 +168,7 @@ export default function Home() {
   const [initialMessages, setInitialMessages] = useState<StoredMessage[]>([]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [indexStatus, setIndexStatus] = useState<"unknown" | "indexed" | "not_indexed">("unknown");
   const [isIndexing, setIsIndexing] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -397,7 +398,7 @@ export default function Home() {
       <div className="flex flex-col flex-1 min-w-0">
 
         {/* ── Header / HUD ────────────────────────────────────────────── */}
-        <header className="flex items-center justify-between px-6 py-3 hud-header-rule hud-enter relative z-10 flex-shrink-0">
+        <header className="flex items-center justify-between px-3 sm:px-6 py-3 hud-header-rule hud-enter relative z-10 flex-shrink-0">
 
           {/* Left cluster */}
           <div className="flex items-center gap-4">
@@ -423,7 +424,7 @@ export default function Home() {
             </div>
 
             {/* Wordmark */}
-            <span className="cortex-wordmark text-sm font-bold tracking-widest uppercase">
+            <span className="cortex-wordmark text-sm font-bold tracking-widest uppercase hidden sm:inline">
               Cortex
             </span>
 
@@ -468,11 +469,13 @@ export default function Home() {
 
           {/* Right cluster */}
           <div className="flex items-center gap-3">
+
+            {/* Desktop: index buttons */}
             {indexStatus === "not_indexed" && (
               <button
                 onClick={handleIndex}
                 disabled={isIndexing}
-                className="btn-boot flex items-center gap-2 text-xs px-4 py-1.5 rounded-sm"
+                className="hidden sm:flex btn-boot items-center gap-2 text-xs px-4 py-1.5 rounded-sm"
               >
                 {isIndexing ? (
                   <>
@@ -491,7 +494,7 @@ export default function Home() {
               <button
                 onClick={handleIndex}
                 disabled={isIndexing}
-                className="btn-secondary flex items-center gap-2 text-xs px-3 py-1.5 rounded-sm"
+                className="hidden sm:flex btn-secondary items-center gap-2 text-xs px-3 py-1.5 rounded-sm"
               >
                 {isIndexing ? (
                   <>
@@ -513,88 +516,193 @@ export default function Home() {
               <span>READY</span>
             </div>
 
-            <Link
-              href="/vault"
-              className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-              style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-            >
-              <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9707;</span>
-              VAULT
-            </Link>
+            {/* Desktop nav links */}
+            <nav className="hidden sm:flex items-center gap-3" aria-label="Main navigation">
+              <Link
+                href="/vault"
+                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
+                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
+              >
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9707;</span>
+                VAULT
+              </Link>
 
-            <Link
-              href="/graph"
-              className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-              style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-            >
-              <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9671;</span>
-              GRAPH
-            </Link>
+              <Link
+                href="/graph"
+                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
+                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
+              >
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9671;</span>
+                GRAPH
+              </Link>
 
-            <Link
-              href="/ambient"
-              className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-              style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-            >
-              <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9689;</span>
-              AMBIENT
-            </Link>
+              <Link
+                href="/ambient"
+                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
+                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
+              >
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9689;</span>
+                AMBIENT
+              </Link>
 
-            <Link
-              href="/lineage"
-              className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-              style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-            >
-              <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9672;</span>
-              LINEAGE
-            </Link>
+              <Link
+                href="/lineage"
+                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
+                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
+              >
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9672;</span>
+                LINEAGE
+              </Link>
 
-            <Link
-              href="/clusters"
-              className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-              style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-            >
-              <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9678;</span>
-              CLUSTERS
-            </Link>
+              <Link
+                href="/clusters"
+                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
+                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
+              >
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9678;</span>
+                CLUSTERS
+              </Link>
 
-            <Link
-              href="/digest"
-              className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-              style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-            >
-              <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9670;</span>
-              DIGEST
-            </Link>
+              <Link
+                href="/digest"
+                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
+                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
+              >
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9670;</span>
+                DIGEST
+              </Link>
 
-            <Link
-              href="/memory"
-              className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-              style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-            >
-              <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9673;</span>
-              MEMORY
-            </Link>
+              <Link
+                href="/memory"
+                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
+                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
+              >
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9673;</span>
+                MEMORY
+              </Link>
 
-            <Link
-              href="/settings"
-              className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-              style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-            >
-              <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9881;</span>
-              SETTINGS
-            </Link>
+              <Link
+                href="/settings"
+                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
+                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
+              >
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9881;</span>
+                SETTINGS
+              </Link>
 
+              <button
+                onClick={logout}
+                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
+                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
+              >
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9211;</span>
+                LOGOUT
+              </button>
+            </nav>
+
+            {/* Mobile: hamburger button */}
             <button
-              onClick={logout}
-              className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-              style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
+              className="sm:hidden btn-secondary flex items-center justify-center rounded-sm flex-shrink-0"
+              style={{ width: 32, height: 32, fontSize: "1rem", padding: 0 }}
+              aria-label="Open navigation menu"
+              aria-expanded={mobileMenuOpen}
+              onClick={() => setMobileMenuOpen((v) => !v)}
             >
-              <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9211;</span>
-              LOGOUT
+              {mobileMenuOpen ? "\u2715" : "\u2630"}
             </button>
           </div>
         </header>
+
+        {/* ── Mobile nav dropdown ──────────────────────────────────────── */}
+        {mobileMenuOpen && (
+          <>
+            {/* Backdrop */}
+            <div
+              className="sm:hidden fixed inset-0 z-20"
+              aria-hidden="true"
+              onClick={() => setMobileMenuOpen(false)}
+            />
+            {/* Dropdown panel */}
+            <div
+              className="sm:hidden fixed right-3 z-30 flex flex-col gap-1 p-3 rounded-sm"
+              style={{
+                top: "calc(var(--header-height, 52px) + 4px)",
+                minWidth: 180,
+                background: "var(--bg-raised)",
+                border: "1px solid var(--border-mid)",
+                boxShadow: "0 4px 24px rgba(0,0,0,0.6)",
+                fontFamily: "var(--font-geist-mono, monospace)",
+              }}
+              role="menu"
+              aria-label="Mobile navigation"
+            >
+              {/* Index action */}
+              {indexStatus === "not_indexed" && (
+                <button
+                  onClick={() => { handleIndex(); setMobileMenuOpen(false); }}
+                  disabled={isIndexing}
+                  className="btn-boot flex items-center gap-2 text-xs px-3 py-2 rounded-sm w-full"
+                  role="menuitem"
+                >
+                  {isIndexing ? (
+                    <><span className="indexing-ring" /><span>BOOTING...</span></>
+                  ) : (
+                    <><span style={{ fontSize: "0.6rem", opacity: 0.7 }}>&#9654;</span><span>INIT VAULT INDEX</span></>
+                  )}
+                </button>
+              )}
+              {indexStatus === "indexed" && (
+                <button
+                  onClick={() => { handleIndex(); setMobileMenuOpen(false); }}
+                  disabled={isIndexing}
+                  className="btn-secondary flex items-center gap-2 text-xs px-3 py-2 rounded-sm w-full"
+                  role="menuitem"
+                >
+                  {isIndexing ? (
+                    <><span className="indexing-ring" /><span>RE-INDEXING</span></>
+                  ) : (
+                    <span>RE-INDEX</span>
+                  )}
+                </button>
+              )}
+              <div style={{ height: 1, background: "var(--border-dim)", margin: "4px 0" }} />
+              {(
+                [
+                  { href: "/vault",    icon: "\u25c7", label: "VAULT"    },
+                  { href: "/graph",    icon: "\u25c7", label: "GRAPH"    },
+                  { href: "/ambient",  icon: "\u25c9", label: "AMBIENT"  },
+                  { href: "/lineage",  icon: "\u25c8", label: "LINEAGE"  },
+                  { href: "/clusters", icon: "\u25ce", label: "CLUSTERS" },
+                  { href: "/digest",   icon: "\u25c6", label: "DIGEST"   },
+                  { href: "/memory",   icon: "\u25c9", label: "MEMORY"   },
+                  { href: "/settings", icon: "\u2699", label: "SETTINGS" },
+                ] as const
+              ).map(({ href, icon, label }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="btn-secondary flex items-center gap-2 text-xs px-3 py-2 rounded-sm"
+                  style={{ letterSpacing: "0.1em", fontSize: "0.65rem" }}
+                  role="menuitem"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>{icon}</span>
+                  {label}
+                </Link>
+              ))}
+              <div style={{ height: 1, background: "var(--border-dim)", margin: "4px 0" }} />
+              <button
+                onClick={() => { logout(); setMobileMenuOpen(false); }}
+                className="btn-secondary flex items-center gap-2 text-xs px-3 py-2 rounded-sm w-full"
+                style={{ letterSpacing: "0.1em", fontSize: "0.65rem" }}
+                role="menuitem"
+              >
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9211;</span>
+                LOGOUT
+              </button>
+            </div>
+          </>
+        )}
 
         {/* ── Chat / split-pane (remounted when session changes) ─────────── */}
         {viewerNotePath !== null ? (
@@ -1292,7 +1400,7 @@ function ChatView({ sessionId, initialMessages, onSessionUpdated, onInjectInput,
       </main>
 
       {/* ── Input / terminal bar ────────────────────────────────────────── */}
-      <div className="px-4 pb-6 pt-3 hud-footer-rule relative z-10 flex-shrink-0">
+      <div className="px-4 pb-3 sm:pb-6 pt-3 hud-footer-rule relative z-10 flex-shrink-0">
         <div className="max-w-2xl mx-auto">
 
           {/* Image preview strip */}
@@ -1428,12 +1536,12 @@ function ChatView({ sessionId, initialMessages, onSessionUpdated, onInjectInput,
               />
             </div>
 
-            {/* Auto-speak toggle */}
+            {/* Auto-speak toggle — hidden on mobile to save space */}
             {ttsSupported && (
               <button
                 type="button"
                 onClick={() => setAutoSpeak((v) => !v)}
-                className={`btn-auto-speak px-3 py-3 rounded-sm flex-shrink-0${autoSpeak ? " btn-auto-speak--on" : ""}`}
+                className={`hidden sm:flex btn-auto-speak px-3 py-3 rounded-sm flex-shrink-0${autoSpeak ? " btn-auto-speak--on" : ""}`}
                 title={autoSpeak ? "Auto-speak on — click to turn off" : "Auto-speak off — click to enable"}
               >
                 {autoSpeak ? "VOICE ON" : "VOICE OFF"}
@@ -1492,7 +1600,7 @@ function ChatView({ sessionId, initialMessages, onSessionUpdated, onInjectInput,
             </p>
           )}
 
-          <p className="text-center hud-hint mt-2.5">
+          <p className="hidden sm:block text-center hud-hint mt-2.5">
             {isSearchMode
               ? "ENTER \u2472 SCAN VAULT \u3000 ESC \u2472 CANCEL SEARCH"
               : "SHIFT+ENTER \u00a0\u2500\u00a0 NEW LINE \u00a0\u00a0\u2502\u00a0\u00a0 ENTER \u00a0\u2500\u00a0 TRANSMIT"}

@@ -376,6 +376,8 @@ export default function VaultPage() {
           top: 0,
           zIndex: 20,
           background: "var(--bg-deep)",
+          flexWrap: "wrap",
+          gap: "0.5rem",
         }}
       >
         {/* Left: back link + title */}
@@ -437,7 +439,7 @@ export default function VaultPage() {
         </div>
 
         {/* Right: guest nav + refresh button + auth */}
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", justifyContent: "flex-end" }}>
           <GuestNav />
           {lastRefreshed && (
             <span
@@ -509,7 +511,7 @@ export default function VaultPage() {
       </header>
 
       {/* ── Content ─────────────────────────────────────────────────────────── */}
-      <main style={{ maxWidth: "1400px", margin: "0 auto", padding: "1.5rem" }}>
+      <main style={{ maxWidth: "1400px", margin: "0 auto", padding: "1.5rem 1rem", width: "100%" }}>
 
         {loading && !stats && <LoadingState />}
         {error && <ErrorState message={error} />}
@@ -523,7 +525,7 @@ export default function VaultPage() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 1fr 1fr",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(90px, 1fr))",
                   gap: "1rem",
                   marginTop: "1rem",
                 }}

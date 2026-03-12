@@ -179,8 +179,10 @@ export default function SettingsPage() {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "0.75rem 1.5rem",
+          padding: "0.75rem 1rem",
           flexShrink: 0,
+          flexWrap: "wrap",
+          gap: "0.5rem",
         }}
       >
         <Link
@@ -214,7 +216,7 @@ export default function SettingsPage() {
           PERSONALITY TUNING
         </h1>
 
-        <div style={{ width: 120 }} aria-hidden="true" />
+        <div style={{ width: 120, flexShrink: 1 }} aria-hidden="true" />
       </header>
 
       {/* ── Main content ────────────────────────────────────────────────────── */}
@@ -224,7 +226,7 @@ export default function SettingsPage() {
           maxWidth: 720,
           width: "100%",
           margin: "0 auto",
-          padding: "2rem 1.5rem",
+          padding: "1.5rem 1rem",
           display: "flex",
           flexDirection: "column",
           gap: "1.5rem",
@@ -320,6 +322,8 @@ export default function SettingsPage() {
                         display: "flex",
                         justifyContent: "space-between",
                         marginTop: "0.3rem",
+                        flexWrap: "wrap",
+                        gap: "0.25rem",
                       }}
                     >
                       <span

@@ -1231,7 +1231,7 @@ body {
   border: 1px solid var(--border-dim);
   border-radius: 2px;
   padding: 4px 10px;
-  width: 200px;
+  width: min(200px, 40vw);
   caret-color: var(--cyan-bright);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, width 0.2s ease;
   outline: none;
@@ -1891,6 +1891,12 @@ body {
   align-items: center;
   justify-content: center;
   min-height: 40vh;
+}
+
+@media (max-width: 767px) {
+  .ambient-stage {
+    padding: 1.5rem 1.25rem;
+  }
 }
 
 /*
@@ -3364,4 +3370,52 @@ body {
   color: var(--cyan-bright);
   border-color: var(--border-mid);
   box-shadow: var(--shadow-glow-sm);
+}
+
+/* ─── Mobile responsive ────────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  /* Hide graph/cluster usage hint text on mobile — too wide */
+  .graph-stats-bar .graph-stats-bar__item:last-child,
+  .cluster-stats-bar .graph-stats-bar__item:last-child {
+    display: none;
+  }
+
+  /* Increase touch targets */
+  .btn-secondary {
+    min-height: 36px;
+    padding: 6px 10px;
+  }
+
+  /* Session sidebar - full width on mobile */
+  .session-sidebar--open {
+    width: 260px;
+    min-width: 260px;
+  }
+
+  /* Search card text wrapping */
+  .search-card__header {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  /* Citation chips - allow wrapping */
+  .citation-chip {
+    font-size: 0.55rem;
+  }
+
+  /* Hide desktop keyboard hints */
+  .hud-hint {
+    display: none;
+  }
+
+  /* Make messages take more width */
+  .msg-user, .msg-assistant {
+    max-width: 100%;
+  }
+
+  /* Input field - slightly larger text for mobile */
+  .cortex-input {
+    font-size: 1rem; /* prevent iOS zoom on focus */
+  }
 }

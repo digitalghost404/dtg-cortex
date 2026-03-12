@@ -832,15 +832,17 @@ export default function GraphPage() {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "0.65rem 1.25rem",
+          padding: "0.65rem 1rem",
           background: "var(--bg-deep)",
           flexShrink: 0,
           zIndex: 20,
           position: "relative",
+          flexWrap: "wrap",
+          gap: "0.5rem",
         }}
       >
         {/* Left */}
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
           <Link
             href="/"
             className="btn-secondary"
@@ -951,7 +953,7 @@ export default function GraphPage() {
         </div>
 
         {/* Right — nav + search */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", justifyContent: "flex-end" }}>
           <GuestNav />
           <input
             type="text"

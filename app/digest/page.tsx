@@ -477,11 +477,13 @@ export default function DigestPage() {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "0.75rem 1.5rem",
+          padding: "0.75rem 1rem",
           position: "sticky",
           top: 0,
           zIndex: 20,
           background: "var(--bg-deep)",
+          flexWrap: "wrap",
+          gap: "0.5rem",
         }}
       >
         {/* Left: back link */}
@@ -520,7 +522,7 @@ export default function DigestPage() {
         </div>
 
         {/* Right: regenerate + timestamp */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap", justifyContent: "flex-end" }}>
           {digest && !loading && (
             <span
               style={{
@@ -559,7 +561,7 @@ export default function DigestPage() {
       </header>
 
       {/* ── Body ────────────────────────────────────────────────────────────── */}
-      <main style={{ maxWidth: "900px", margin: "0 auto", padding: "1.5rem 1.25rem 3rem" }}>
+      <main style={{ maxWidth: "900px", width: "100%", margin: "0 auto", padding: "1.5rem 1rem 3rem" }}>
         {loading && <DigestLoader />}
 
         {!loading && error && (

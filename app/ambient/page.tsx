@@ -342,6 +342,8 @@ export default function AmbientPage() {
           display: "flex", alignItems: "center", gap: "0.5rem",
           fontFamily: "var(--font-geist-mono, monospace)",
           fontSize: "0.55rem", letterSpacing: "0.12em",
+          flexWrap: "wrap", justifyContent: "flex-end",
+          maxWidth: "calc(100vw - 2rem)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
