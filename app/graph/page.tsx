@@ -925,12 +925,11 @@ export default function GraphPage() {
           flexShrink: 0,
           zIndex: 20,
           position: "relative",
-          flexWrap: "wrap",
           gap: "0.5rem",
         }}
       >
         {/* Left */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
           <Link
             href="/"
             className="btn-secondary"
@@ -947,10 +946,11 @@ export default function GraphPage() {
             }}
           >
             <span style={{ fontSize: "0.8rem" }}>&#8592;</span>
-            BACK TO CORTEX
+            <span className="hidden sm:inline">BACK TO CORTEX</span>
           </Link>
 
           <span
+            className="hidden sm:inline"
             style={{
               fontFamily: "var(--font-geist-mono, monospace)",
               fontSize: "0.6rem",
@@ -971,11 +971,11 @@ export default function GraphPage() {
               textShadow: "0 0 8px rgba(34,211,238,0.4)",
             }}
           >
-            KNOWLEDGE GRAPH
+            GRAPH
           </h1>
 
-          {/* Watcher toggle + SSE status */}
-          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          {/* Watcher toggle + SSE status — hide on mobile */}
+          <div className="hidden sm:flex" style={{ alignItems: "center", gap: "0.5rem" }}>
             <button
               onClick={toggleWatcher}
               className="btn-secondary"
@@ -1041,13 +1041,15 @@ export default function GraphPage() {
         </div>
 
         {/* Right — nav + search */}
-        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", justifyContent: "flex-end" }}>
-          <GuestNav />
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", justifyContent: "flex-end" }}>
+          <div className="hidden sm:flex">
+            <GuestNav />
+          </div>
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="FILTER NODES..."
+            placeholder="FILTER..."
             className="graph-search"
             aria-label="Filter nodes by name"
           />
@@ -1072,7 +1074,7 @@ export default function GraphPage() {
           ) : (
             <Link
               href="/login"
-              className="btn-secondary"
+              className="btn-secondary hidden sm:flex"
               style={{ fontSize: "0.6rem", letterSpacing: "0.12em", padding: "3px 10px", borderRadius: "2px", textDecoration: "none" }}
             >
               LOGIN

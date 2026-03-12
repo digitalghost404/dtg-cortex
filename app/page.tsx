@@ -189,6 +189,8 @@ export default function Home() {
 // ---------------------------------------------------------------------------
 
 function GuestHome() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   return (
     <div className="flex flex-col h-full cortex-bg overflow-hidden">
       {/* Header */}
@@ -206,7 +208,7 @@ function GuestHome() {
             Cortex
           </span>
           <span
-            className="text-xs select-none"
+            className="text-xs select-none hidden sm:inline"
             style={{ color: "var(--text-faint)", fontFamily: "var(--font-geist-mono, monospace)" }}
           >
             /
@@ -236,7 +238,7 @@ function GuestHome() {
           </span>
         </div>
 
-        {/* Right cluster: public nav + login */}
+        {/* Right cluster: public nav + login (desktop) */}
         <nav className="hidden sm:flex items-center gap-3" aria-label="Guest navigation">
           <Link
             href="/vault"
@@ -272,15 +274,59 @@ function GuestHome() {
           </Link>
         </nav>
 
-        {/* Mobile login button */}
-        <Link
-          href="/login"
-          className="sm:hidden btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-          style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.65rem" }}
+        {/* Mobile hamburger */}
+        <button
+          className="sm:hidden btn-secondary flex items-center justify-center"
+          style={{
+            fontFamily: "var(--font-geist-mono, monospace)",
+            fontSize: "1.1rem",
+            padding: "4px 10px",
+            borderRadius: "2px",
+            lineHeight: 1,
+          }}
+          onClick={() => setMobileMenuOpen((v) => !v)}
+          aria-label="Toggle navigation menu"
         >
-          LOGIN
-        </Link>
+          {mobileMenuOpen ? "\u2715" : "\u2630"}
+        </button>
       </header>
+
+      {/* Mobile nav dropdown */}
+      {mobileMenuOpen && (
+        <nav
+          className="sm:hidden flex flex-col gap-1 px-3 py-2 hud-enter"
+          style={{
+            background: "var(--bg-deep)",
+            borderBottom: "1px solid var(--border-dim)",
+            zIndex: 15,
+            flexShrink: 0,
+          }}
+          aria-label="Guest mobile navigation"
+        >
+          {[
+            { href: "/vault", icon: "\u25CB", label: "VAULT" },
+            { href: "/graph", icon: "\u25C7", label: "GRAPH" },
+            { href: "/clusters", icon: "\u25CE", label: "CLUSTERS" },
+            { href: "/login", icon: "\u23FB", label: "LOGIN" },
+          ].map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={() => setMobileMenuOpen(false)}
+              className="btn-secondary flex items-center gap-2 text-xs px-3 py-2.5 rounded-sm"
+              style={{
+                fontFamily: "var(--font-geist-mono, monospace)",
+                letterSpacing: "0.12em",
+                fontSize: "0.65rem",
+                textDecoration: "none",
+              }}
+            >
+              <span style={{ fontSize: "0.6rem", opacity: 0.7 }}>{item.icon}</span>
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+      )}
 
       <GuestChatView />
     </div>

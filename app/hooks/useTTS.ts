@@ -71,6 +71,10 @@ export function useTTS(): UseTTSReturn {
       audioRef.current.src = "";
       audioRef.current = null;
     }
+    // Stop browser speech synthesis fallback
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
     setIsSpeaking(false);
   }, []);
 
@@ -86,6 +90,9 @@ export function useTTS(): UseTTSReturn {
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.src = "";
+      }
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
       }
 
       const controller = new AbortController();
@@ -148,6 +155,8 @@ export function useTTS(): UseTTSReturn {
       setIsSpeaking(false);
       return;
     }
+    // Cancel any prior utterances to prevent queue buildup / looping
+    window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 1.0;
     utterance.pitch = 1.0;
@@ -159,7 +168,10 @@ export function useTTS(): UseTTSReturn {
       null;
     if (preferred) utterance.voice = preferred;
     utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
+    utterance.onerror = (ev) => {
+      // "interrupted" fires when we call cancel() — not a real error
+      if (ev.error !== "interrupted") setIsSpeaking(false);
+    };
     window.speechSynthesis.speak(utterance);
   }
 
@@ -170,6 +182,9 @@ export function useTTS(): UseTTSReturn {
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.src = "";
+      }
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
       }
     };
   }, []);

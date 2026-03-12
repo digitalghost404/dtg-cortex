@@ -3426,12 +3426,9 @@ body {
     overflow-y: auto;
   }
 
-  /* Cluster legend - collapsible on mobile */
+  /* Cluster legend - hidden on mobile to maximize canvas space */
   .cluster-legend {
-    max-width: min(220px, calc(100vw - 2rem));
-    min-width: auto;
-    max-height: 40vh;
-    overflow-y: auto;
+    display: none;
   }
 
   /* Cluster info panel - smaller on mobile */
