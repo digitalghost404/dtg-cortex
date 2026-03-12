@@ -1,0 +1,453 @@
+"use client";
+
+import { useEffect, useState, useRef, useCallback } from "react";
+
+interface NoteViewerProps {
+  notePath: string | null;
+  onClose: () => void;
+}
+
+interface NoteData {
+  name: string;
+  content: string;
+}
+
+// ---------------------------------------------------------------------------
+// Markdown renderer with wikilink support
+// ---------------------------------------------------------------------------
+
+interface RenderedToken {
+  type:
+    | "h1"
+    | "h2"
+    | "h3"
+    | "paragraph"
+    | "code_block"
+    | "hr"
+    | "list_item"
+    | "blank";
+  raw: string;
+}
+
+function tokenize(markdown: string): RenderedToken[] {
+  const lines = markdown.split("\n");
+  const tokens: RenderedToken[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Code block
+    if (line.startsWith("```")) {
+      const fence = line.slice(0, 3);
+      const parts = [line];
+      i++;
+      while (i < lines.length && !lines[i].startsWith(fence)) {
+        parts.push(lines[i]);
+        i++;
+      }
+      if (i < lines.length) parts.push(lines[i]);
+      tokens.push({ type: "code_block", raw: parts.join("\n") });
+      i++;
+      continue;
+    }
+
+    // Headings
+    if (line.startsWith("### ")) {
+      tokens.push({ type: "h3", raw: line.slice(4) });
+      i++;
+      continue;
+    }
+    if (line.startsWith("## ")) {
+      tokens.push({ type: "h2", raw: line.slice(3) });
+      i++;
+      continue;
+    }
+    if (line.startsWith("# ")) {
+      tokens.push({ type: "h1", raw: line.slice(2) });
+      i++;
+      continue;
+    }
+
+    // HR
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) {
+      tokens.push({ type: "hr", raw: line });
+      i++;
+      continue;
+    }
+
+    // List items
+    if (/^(\s*[-*+]|\s*\d+\.) /.test(line)) {
+      tokens.push({ type: "list_item", raw: line });
+      i++;
+      continue;
+    }
+
+    // Blank line
+    if (line.trim() === "") {
+      tokens.push({ type: "blank", raw: "" });
+      i++;
+      continue;
+    }
+
+    // Paragraph
+    tokens.push({ type: "paragraph", raw: line });
+    i++;
+  }
+
+  return tokens;
+}
+
+// Render inline markdown: bold, italic, inline code, wikilinks
+function renderInline(
+  text: string,
+  onWikilink: (target: string) => void
+): React.ReactNode[] {
+  // Split on wikilinks [[...]], bold **...**, italic *...*, inline code `...`
+  const pattern = /(\[\[([^\]]+)\]\]|\*\*(.+?)\*\*|(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)|\`([^`]+)\`)/g;
+  const nodes: React.ReactNode[] = [];
+  let last = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > last) {
+      nodes.push(text.slice(last, match.index));
+    }
+
+    const full = match[0];
+
+    if (full.startsWith("[[")) {
+      const target = match[2];
+      nodes.push(
+        <span
+          key={match.index}
+          className="note-viewer__wikilink"
+          role="button"
+          tabIndex={0}
+          onClick={() => onWikilink(target)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onWikilink(target);
+            }
+          }}
+        >
+          {`[[${target}]]`}
+        </span>
+      );
+    } else if (full.startsWith("**")) {
+      nodes.push(<strong key={match.index}>{match[3]}</strong>);
+    } else if (full.startsWith("`")) {
+      nodes.push(<code key={match.index}>{match[5]}</code>);
+    } else {
+      // italic
+      nodes.push(<em key={match.index}>{match[4]}</em>);
+    }
+
+    last = match.index + full.length;
+  }
+
+  if (last < text.length) {
+    nodes.push(text.slice(last));
+  }
+
+  return nodes;
+}
+
+interface MarkdownContentProps {
+  markdown: string;
+  onWikilink: (target: string) => void;
+}
+
+function MarkdownContent({ markdown, onWikilink }: MarkdownContentProps) {
+  const tokens = tokenize(markdown);
+
+  return (
+    <div className="note-viewer__content">
+      {tokens.map((token, idx) => {
+        switch (token.type) {
+          case "h1":
+            return <h1 key={idx}>{renderInline(token.raw, onWikilink)}</h1>;
+          case "h2":
+            return <h2 key={idx}>{renderInline(token.raw, onWikilink)}</h2>;
+          case "h3":
+            return <h3 key={idx}>{renderInline(token.raw, onWikilink)}</h3>;
+          case "code_block": {
+            const codeLines = token.raw.split("\n");
+            // Strip the fence lines
+            const inner = codeLines.slice(1, -1).join("\n");
+            return (
+              <pre key={idx}>
+                <code>{inner}</code>
+              </pre>
+            );
+          }
+          case "hr":
+            return (
+              <hr
+                key={idx}
+                style={{ borderColor: "var(--border-dim)", margin: "1em 0" }}
+              />
+            );
+          case "list_item":
+            return (
+              <div key={idx} style={{ paddingLeft: "1em", marginBottom: "2px" }}>
+                &bull;&nbsp;{renderInline(token.raw.replace(/^\s*[-*+]\s+|\s*\d+\.\s+/, ""), onWikilink)}
+              </div>
+            );
+          case "blank":
+            return <div key={idx} style={{ height: "0.6em" }} />;
+          default:
+            return <p key={idx} style={{ margin: "0 0 0.4em" }}>{renderInline(token.raw, onWikilink)}</p>;
+        }
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Drag-to-resize divider hook
+// ---------------------------------------------------------------------------
+
+interface DragHandleProps {
+  onDrag: (dx: number) => void;
+}
+
+function DragHandle({ onDrag }: DragHandleProps) {
+  const draggingRef = useRef(false);
+  const lastXRef = useRef(0);
+
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      draggingRef.current = true;
+      lastXRef.current = e.clientX;
+
+      const divider = e.currentTarget as HTMLElement;
+      divider.classList.add("split-pane__divider--dragging");
+
+      function onMouseMove(ev: MouseEvent) {
+        if (!draggingRef.current) return;
+        const dx = ev.clientX - lastXRef.current;
+        lastXRef.current = ev.clientX;
+        onDrag(dx);
+      }
+
+      function onMouseUp() {
+        draggingRef.current = false;
+        divider.classList.remove("split-pane__divider--dragging");
+        window.removeEventListener("mousemove", onMouseMove);
+        window.removeEventListener("mouseup", onMouseUp);
+      }
+
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", onMouseUp);
+    },
+    [onDrag]
+  );
+
+  return (
+    <div
+      className="split-pane__divider"
+      onMouseDown={handleMouseDown}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize note viewer"
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// NoteViewer
+// ---------------------------------------------------------------------------
+
+export default function NoteViewer({ notePath, onClose }: NoteViewerProps) {
+  const [note, setNote] = useState<NoteData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Navigation history: stack of paths, current index
+  const [history, setHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+
+  // Viewer panel width (controlled by drag)
+  const [viewerWidth, setViewerWidth] = useState(400);
+
+  // When the external notePath changes (citation click), push to history.
+  // We use a ref for historyIndex inside the setter to avoid stale closure.
+  const historyIndexRef = useRef(historyIndex);
+  historyIndexRef.current = historyIndex;
+
+  useEffect(() => {
+    if (!notePath) return;
+    setHistory((prev) => {
+      const idx = historyIndexRef.current;
+      // If navigating to the same note, do nothing
+      if (prev[idx] === notePath) return prev;
+      // Truncate forward history, push new entry
+      const next = prev.slice(0, idx + 1);
+      next.push(notePath);
+      return next;
+    });
+    setHistoryIndex((prev) => {
+      if (history[prev] === notePath) return prev;
+      return prev + 1;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [notePath]);
+
+  const activePath = history[historyIndex] ?? null;
+
+  // Fetch note whenever activePath changes
+  useEffect(() => {
+    if (!activePath) {
+      setNote(null);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+
+    fetch(`/api/note?path=${encodeURIComponent(activePath)}&full=true`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json() as Promise<NoteData>;
+      })
+      .then((data) => {
+        setNote(data);
+        setLoading(false);
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : "Failed to load note";
+        setError(msg);
+        setLoading(false);
+      });
+  }, [activePath]);
+
+  // Wikilink navigation: push the linked note onto the history
+  const handleWikilink = useCallback(
+    (target: string) => {
+      // Wikilinks reference note names without path/extension; we attempt the
+      // path used in the vault by appending ".md". The API resolves via the
+      // vault root, so we just pass the bare name with extension.
+      const linkedPath = `${target}.md`;
+      setHistory((prev) => {
+        const next = prev.slice(0, historyIndex + 1);
+        next.push(linkedPath);
+        return next;
+      });
+      setHistoryIndex((prev) => prev + 1);
+    },
+    [historyIndex]
+  );
+
+  const canBack = historyIndex > 0;
+  const canForward = historyIndex < history.length - 1;
+
+  function handleBack() {
+    if (canBack) setHistoryIndex((i) => i - 1);
+  }
+
+  function handleForward() {
+    if (canForward) setHistoryIndex((i) => i + 1);
+  }
+
+  function handleDrag(dx: number) {
+    // Dragging left (negative dx) grows the viewer; dragging right shrinks it.
+    setViewerWidth((w) => Math.min(600, Math.max(280, w - dx)));
+  }
+
+  if (!activePath && !notePath) return null;
+
+  return (
+    <>
+      <DragHandle onDrag={handleDrag} />
+      <div
+        className="split-pane__viewer"
+        style={{ width: viewerWidth }}
+        role="complementary"
+        aria-label="Note viewer"
+      >
+        {/* Header */}
+        <div className="note-viewer__header">
+          <div className="note-viewer__nav">
+            <button
+              className="note-viewer__nav-btn"
+              onClick={handleBack}
+              disabled={!canBack}
+              aria-label="Navigate back"
+              title="Back"
+            >
+              &larr;
+            </button>
+            <button
+              className="note-viewer__nav-btn"
+              onClick={handleForward}
+              disabled={!canForward}
+              aria-label="Navigate forward"
+              title="Forward"
+            >
+              &rarr;
+            </button>
+          </div>
+
+          <span className="note-viewer__path" title={activePath ?? ""}>
+            {activePath ?? ""}
+          </span>
+
+          <button
+            className="note-viewer__close"
+            onClick={onClose}
+            aria-label="Close note viewer"
+            title="Close"
+          >
+            &times;
+          </button>
+        </div>
+
+        {/* Body */}
+        {loading && (
+          <div
+            className="flex items-center gap-3 px-4 py-6"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <div className="scan-loader">
+              <div className="scan-loader__bar" />
+              <div className="scan-loader__bar" />
+              <div className="scan-loader__bar" />
+              <div className="scan-loader__bar" />
+              <div className="scan-loader__bar" />
+            </div>
+            <span
+              style={{
+                fontFamily: "var(--font-geist-mono, monospace)",
+                fontSize: "0.65rem",
+                letterSpacing: "0.12em",
+                color: "var(--cyan-mid)",
+              }}
+            >
+              LOADING NOTE...
+            </span>
+          </div>
+        )}
+
+        {!loading && error && (
+          <div
+            className="note-viewer__content"
+            style={{ color: "var(--text-muted)", fontStyle: "italic" }}
+            role="alert"
+          >
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && note && (
+          <MarkdownContent
+            markdown={note.content}
+            onWikilink={handleWikilink}
+          />
+        )}
+      </div>
+    </>
+  );
+}
