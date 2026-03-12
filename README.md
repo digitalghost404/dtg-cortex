@@ -4,11 +4,11 @@
 
 Your Obsidian vault is full of ideas — but you can't grep intuition. **Cortex** is a web app that gives your vault a voice. Ask it questions, and it pulls the right notes, threads the connections, and answers with the full weight of everything you've ever written. It doesn't just search — it *understands*.
 
-**RAG-powered chat. Live knowledge graph. Semantic clusters. One vault that finally talks back.**
+**RAG-powered chat. Tag browser. Random discovery. One vault that finally talks back.**
 
 ---
 
-## What Cortex does differently
+## ⚡ What Cortex does differently
 
 Most note apps let you write. Cortex lets you *think*.
 
@@ -17,33 +17,39 @@ Most note apps let you write. Cortex lets you *think*.
 | Searching your vault with Ctrl+F and hope | Ask a question in plain language — Cortex retrieves the right notes and synthesizes an answer |
 | Forgetting what you wrote six months ago | Every note is indexed and retrievable by meaning, not just keywords |
 | Notes that exist in isolation | A live knowledge graph shows how every idea connects to every other |
-| No idea which topics are dense and which are thin | Semantic cluster map groups your notes by theme — see your vault's regions at a glance |
+| No idea which topics are dense and which are thin | Tag browser and semantic clusters show your vault's regions at a glance |
 | Manually reviewing stale notes | Ambient mode surfaces forgotten notes, quotes, stats, and "on this day" flashbacks |
-| Wondering if two ideas are related | Note lineage tracks which notes appear together across your queries over time |
+| Never stumbling on old ideas | Discover mode serves random notes — rediscover what you forgot you knew |
 | Missing connections you should have made | Link discovery finds notes that are semantically related but not yet linked |
 
 ---
 
-## Features
+## 🛠 Features
 
 ### Chat
 - **RAG-backed Q&A** — Voyage embeddings + Upstash Vector search retrieves the most relevant notes for every query
 - **Streamed responses** from Claude via Vercel AI SDK — fast, contextual, citation-backed
 - **Session persistence** — conversations are saved and resumable from a sidebar
+- **Guest chat** — unauthenticated visitors can chat with the vault (rate-limited, ephemeral, Haiku-backed)
+- **Starter prompts** — tap-to-ask suggestions in guest mode for instant exploration
 - **Web search** — prefix any message with `/web` to pull live results via Tavily
-- **Text-to-speech** — hear responses read aloud via ElevenLabs
+- **Text-to-speech** — hear responses read aloud via ElevenLabs (browser fallback for guests)
 - **Voice input** — speak your questions with browser speech recognition
 - **Slash commands** — `/summarize`, `/connections`, `/gaps`, `/explain`, `/related`, `/timeline`, `/debate`
 - **Memory** — Cortex learns your preferences, interests, and patterns from conversations and injects them into future context
 
-### Vault exploration
-- **Knowledge graph** — interactive d3-force canvas with live file watcher integration (local dev)
-- **Topic clusters** — 2D scatter plot of your notes grouped by semantic similarity
-- **Vault diagnostics** — health indicators, orphan detection, link stats, and a DNA-style fingerprint of your vault
-- **Note lineage** — which notes keep surfacing in your queries? Lineage tracks frequency and recency
-- **Link discovery** — surfaces unlinked notes that should be connected based on content overlap
-- **Ambient mode** — a lean-back display that cycles through quotes, stats, forgotten notes, tag clouds, and "on this day" memories
-- **Digest** — AI-generated summary of vault activity and notable connections
+### Vault Exploration
+| Feature | Description |
+|---------|-------------|
+| **Tag browser** | Browse every tag in your vault, see note counts, expand to view tagged notes — filterable and mobile-friendly |
+| **Discover** | Random note surfacing — tap shuffle to rediscover forgotten ideas with content previews, tags, and connection counts |
+| **Vault diagnostics** | Health indicators, orphan detection, link stats, and a DNA-style fingerprint of your vault |
+| **Knowledge graph** | Interactive d3-force canvas with live file watcher integration (local dev) |
+| **Topic clusters** | 2D scatter plot of your notes grouped by semantic similarity |
+| **Note lineage** | Which notes keep surfacing in your queries? Lineage tracks frequency and recency |
+| **Link discovery** | Surfaces unlinked notes that should be connected based on content overlap |
+| **Ambient mode** | A lean-back display that cycles through quotes, stats, forgotten notes, tag clouds, and "on this day" memories |
+| **Digest** | AI-generated summary of vault activity and notable connections |
 
 ### Personalisation
 - **Personality sliders** — adjust formality, response length, challenge level, and creativity
@@ -51,7 +57,7 @@ Most note apps let you write. Cortex lets you *think*.
 
 ---
 
-## Auth & Security
+## 🔒 Auth & Security
 
 Cortex is designed to be deployed on the public internet as a personal tool.
 
@@ -60,14 +66,14 @@ Cortex is designed to be deployed on the public internet as a personal tool.
 - **Rate limiting** — Redis-backed INCR+EXPIRE on login and setup endpoints
 - **TOTP replay prevention** — atomic set-if-not-exists prevents reuse of one-time codes
 - **CSRF protection** — origin validation on all mutating requests
-- **Guest mode** — unauthenticated visitors can use vault-backed chat (rate-limited via Haiku) and explore the graph, vault diagnostics, and clusters (read-only, zero API cost)
-- **Protected routes** — full chat, web search, TTS, sessions, memory, ambient, lineage, digest, and settings require authentication
+- **Guest mode** — unauthenticated visitors can chat (rate-limited via Haiku), browse tags, discover random notes, and view vault diagnostics (read-only, zero API cost on non-chat routes)
+- **Protected routes** — full chat, web search, TTS, sessions, memory, ambient, lineage, digest, graph, clusters, and settings require authentication
 - **Security headers** — CSP, HSTS, X-Frame-Options DENY, X-Content-Type-Options, Referrer-Policy, Permissions-Policy
 - **Edge-compatible token revocation** — middleware checks JWT revocation via Upstash REST API before hitting any route
 
 ---
 
-## Architecture
+## ⚙️ Architecture
 
 Cortex runs on **Vercel serverless functions** with all persistent state stored in **Upstash Redis** and embeddings in **Upstash Vector**. A dual-mode abstraction layer (`lib/kv.ts`) falls back to the local filesystem when Redis credentials are absent, so local development works without any cloud services.
 
@@ -103,7 +109,7 @@ Mode is determined automatically by the presence of `KV_REST_API_URL`.
 
 ---
 
-## Tech stack
+## 🧩 Tech Stack
 
 | Layer | Library |
 |-------|---------|
@@ -121,7 +127,7 @@ Mode is determined automatically by the presence of `KV_REST_API_URL`.
 
 ---
 
-## Setup
+## 🚀 Setup
 
 ### 1. Install dependencies
 
@@ -190,14 +196,16 @@ For **local development**, the app reads directly from the filesystem at `VAULT_
 
 ---
 
-## Routes
+## 🗺 Routes
 
 | Route | Auth | Description |
 |-------|------|-------------|
 | `/` | Guest | Chat — guest mode (vault-backed, ephemeral, rate-limited) or full interface when authenticated |
-| `/graph` | Guest | Interactive knowledge graph |
 | `/vault` | Guest | Vault diagnostics and health |
-| `/clusters` | Guest | Semantic topic clusters |
+| `/tags` | Guest | Tag browser — explore every tag and its notes |
+| `/discover` | Guest | Random note discovery — shuffle through your vault |
+| `/graph` | Required | Interactive knowledge graph |
+| `/clusters` | Required | Semantic topic clusters |
 | `/ambient` | Required | Ambient display mode |
 | `/digest` | Required | AI-generated vault digest |
 | `/lineage` | Required | Note reference history |
@@ -208,11 +216,11 @@ For **local development**, the app reads directly from the filesystem at `VAULT_
 
 Guest chat (`/api/chat/guest`) uses Claude Haiku, is limited to 500 character inputs, 500 output tokens, 10 messages/hour per IP, and 100 messages/day globally. No session or memory persistence.
 
-Graph, vault, and cluster routes are read-only and make zero LLM/embedding API calls.
+Guest exploration routes (vault, tags, discover) are read-only and make zero LLM/embedding API calls.
 
 ---
 
-## Cortex in action
+## 💬 Cortex in action
 
 ```
 "What have I written about spaced repetition and how does it connect to my productivity notes?"
@@ -234,7 +242,7 @@ Graph, vault, and cluster routes are read-only and make zero LLM/embedding API c
 
 ---
 
-## Deploying to Vercel
+## ☁️ Deploying to Vercel
 
 1. Push the repo to GitHub
 2. Import the project in Vercel
@@ -246,18 +254,7 @@ The filesystem is read-only on Vercel. All state (sessions, memory, personality,
 
 ---
 
-## Building for production
-
-```bash
-npm run build
-npm start
-```
-
-Deploy behind HTTPS. The `JWT_SECRET` and all API keys should be injected via your hosting platform's secret store — not committed to the repo.
-
----
-
-## License
+## 📄 License
 
 [MIT](./LICENSE) with [Commons Clause](https://commonsclause.com/)
 

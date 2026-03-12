@@ -6,8 +6,8 @@ import { useAuth } from "./AuthProvider";
 
 const PUBLIC_LINKS = [
   { href: "/vault", label: "VAULT", icon: "\u25A3" },
-  { href: "/graph", label: "GRAPH", icon: "\u25C7" },
-  { href: "/clusters", label: "CLUSTERS", icon: "\u25CE" },
+  { href: "/tags", label: "TAGS", icon: "\u2606" },
+  { href: "/discover", label: "DISCOVER", icon: "\u2740" },
 ];
 
 export default function GuestNav() {

@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useAuth } from "@/app/components/AuthProvider";
-import GuestNav from "@/app/components/GuestNav";
 import {
   forceSimulation,
   forceLink,
@@ -1051,9 +1050,6 @@ export default function GraphPage() {
 
         {/* Right — nav + search */}
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", justifyContent: "flex-end" }}>
-          <div className="hidden sm:flex">
-            <GuestNav />
-          </div>
           <input
             type="text"
             value={searchQuery}

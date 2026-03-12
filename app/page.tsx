@@ -249,20 +249,20 @@ function GuestHome() {
             VAULT
           </Link>
           <Link
-            href="/graph"
+            href="/tags"
             className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
             style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
           >
-            <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9671;</span>
-            GRAPH
+            <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9734;</span>
+            TAGS
           </Link>
           <Link
-            href="/clusters"
+            href="/discover"
             className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
             style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
           >
-            <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9678;</span>
-            CLUSTERS
+            <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#10048;</span>
+            DISCOVER
           </Link>
           <Link
             href="/login"
@@ -305,8 +305,8 @@ function GuestHome() {
         >
           {[
             { href: "/vault", icon: "\u25CB", label: "VAULT" },
-            { href: "/graph", icon: "\u25C7", label: "GRAPH" },
-            { href: "/clusters", icon: "\u25CE", label: "CLUSTERS" },
+            { href: "/tags", icon: "\u2606", label: "TAGS" },
+            { href: "/discover", icon: "\u2740", label: "DISCOVER" },
             { href: "/login", icon: "\u23FB", label: "LOGIN" },
           ].map((item) => (
             <Link
@@ -703,6 +703,24 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
               </Link>
 
               <Link
+                href="/tags"
+                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
+                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
+              >
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9734;</span>
+                TAGS
+              </Link>
+
+              <Link
+                href="/discover"
+                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
+                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
+              >
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#10048;</span>
+                DISCOVER
+              </Link>
+
+              <Link
                 href="/graph"
                 className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
                 style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
@@ -844,6 +862,8 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
               {(
                 [
                   { href: "/vault",    icon: "\u25c7", label: "VAULT"    },
+                  { href: "/tags",     icon: "\u2606", label: "TAGS"     },
+                  { href: "/discover", icon: "\u2740", label: "DISCOVER" },
                   { href: "/graph",    icon: "\u25c7", label: "GRAPH"    },
                   { href: "/ambient",  icon: "\u25c9", label: "AMBIENT"  },
                   { href: "/lineage",  icon: "\u25c8", label: "LINEAGE"  },
@@ -1916,6 +1936,36 @@ function GuestChatView() {
                 >
                   &#9642; GUEST MODE &mdash; 10 MSG/HR &mdash; 500 CHAR LIMIT &#9642;
                 </p>
+              </div>
+
+              {/* Starter prompts */}
+              <div className="flex flex-col sm:flex-row flex-wrap gap-2 mt-4 max-w-md">
+                {[
+                  "What topics does this vault cover?",
+                  "What are the most connected ideas?",
+                  "Summarize the key themes",
+                  "What should I read first?",
+                ].map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    onClick={() => {
+                      setInput("");
+                      sendMessage({ parts: [{ type: "text", text: prompt }] });
+                    }}
+                    className="btn-secondary text-xs px-3 py-2 rounded-sm text-left"
+                    style={{
+                      fontFamily: "var(--font-geist-mono, monospace)",
+                      fontSize: "0.6rem",
+                      letterSpacing: "0.06em",
+                      color: "var(--text-secondary)",
+                      flex: "1 1 auto",
+                      minWidth: "fit-content",
+                    }}
+                  >
+                    {prompt}
+                  </button>
+                ))}
               </div>
             </div>
           )}
