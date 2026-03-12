@@ -3,7 +3,7 @@ import { getLineageStats } from "@/lib/lineage";
 
 export async function GET() {
   try {
-    const stats = getLineageStats();
+    const stats = await getLineageStats();
     return NextResponse.json(stats);
   } catch (err) {
     console.error("[lineage GET]", err);

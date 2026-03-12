@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["vectra", "bcrypt"],
+  serverExternalPackages: ["bcrypt"],
 
   // H-4: Security headers
   async headers() {

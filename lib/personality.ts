@@ -1,5 +1,4 @@
-import fs from "fs";
-import path from "path";
+import * as kv from "./kv";
 
 export interface PersonalitySettings {
   formality: number;   // 0 = casual, 100 = academic
@@ -15,12 +14,12 @@ export const DEFAULT_PERSONALITY: PersonalitySettings = {
   creativity: 40,
 };
 
-const PERSONALITY_FILE = path.join(process.cwd(), ".cortex-personality.json");
+const KV_KEY = "personality";
 
-export function loadPersonality(): PersonalitySettings {
+export async function loadPersonality(): Promise<PersonalitySettings> {
   try {
-    const raw = fs.readFileSync(PERSONALITY_FILE, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<PersonalitySettings>;
+    const parsed = await kv.getJSON<Partial<PersonalitySettings>>(KV_KEY);
+    if (!parsed) return { ...DEFAULT_PERSONALITY };
     return {
       formality: typeof parsed.formality === "number" ? parsed.formality : DEFAULT_PERSONALITY.formality,
       length: typeof parsed.length === "number" ? parsed.length : DEFAULT_PERSONALITY.length,
@@ -32,8 +31,8 @@ export function loadPersonality(): PersonalitySettings {
   }
 }
 
-export function savePersonality(settings: PersonalitySettings): void {
-  fs.writeFileSync(PERSONALITY_FILE, JSON.stringify(settings, null, 2), "utf-8");
+export async function savePersonality(settings: PersonalitySettings): Promise<void> {
+  await kv.setJSON(KV_KEY, settings);
 }
 
 /**

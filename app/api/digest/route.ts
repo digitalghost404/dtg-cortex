@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-import matter from "gray-matter";
-import { LocalIndex } from "vectra";
+import { getAllNotes } from "@/lib/vault";
+import { fetchAllVectors, indexHasItems } from "@/lib/vector";
+import type { VaultNote } from "@/lib/vault";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-type ChunkMetadata = Record<string, import("vectra").MetadataTypes>;
 
 export interface DigestSection {
   type: "changes" | "connections" | "forgotten" | "questions" | "stats";
@@ -22,7 +19,7 @@ export interface DigestResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Math helpers (mirrored from links/discover)
+// Math helpers
 // ---------------------------------------------------------------------------
 
 function cosineSimilarity(a: number[], b: number[]): number {
@@ -52,7 +49,7 @@ function averageVectors(vectors: number[][]): number[] {
 }
 
 // ---------------------------------------------------------------------------
-// Wikilink extraction (mirrored from links/discover)
+// Wikilink extraction
 // ---------------------------------------------------------------------------
 
 const WIKILINK_RE = /\[\[([^\]]+)\]\]/g;
@@ -70,89 +67,6 @@ function extractWikilinks(content: string): Set<string> {
 }
 
 // ---------------------------------------------------------------------------
-// File collection
-// ---------------------------------------------------------------------------
-
-interface VaultFile {
-  /** Relative path from vault root, e.g. "folder/note.md" */
-  relPath: string;
-  /** Base name without extension */
-  name: string;
-  /** Full absolute path */
-  absPath: string;
-  mtimeMs: number;
-  content: string;
-  wordCount: number;
-  /** Tags extracted from frontmatter */
-  tags: string[];
-  /** Folders in the path (all but last segment) */
-  folder: string;
-}
-
-function countWords(text: string): number {
-  return text.trim().split(/\s+/).filter(Boolean).length;
-}
-
-function collectMarkdownFiles(vaultPath: string): VaultFile[] {
-  const results: VaultFile[] = [];
-
-  function walk(dir: string) {
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (entry.name.startsWith(".")) continue;
-      const absPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(absPath);
-      } else if (entry.isFile() && entry.name.endsWith(".md")) {
-        let stat: fs.Stats;
-        try {
-          stat = fs.statSync(absPath);
-        } catch {
-          continue;
-        }
-        let raw = "";
-        try {
-          raw = fs.readFileSync(absPath, "utf-8");
-        } catch {
-          continue;
-        }
-        const parsed = matter(raw);
-        const body = parsed.content;
-        const frontmatterTags: string[] = (() => {
-          const t = parsed.data?.tags;
-          if (Array.isArray(t)) return t.map(String);
-          if (typeof t === "string") return [t];
-          return [];
-        })();
-
-        const relPath = path.relative(vaultPath, absPath);
-        const name = path.basename(entry.name, ".md");
-        const folder = path.dirname(relPath) === "." ? "" : path.dirname(relPath);
-
-        results.push({
-          relPath,
-          name,
-          absPath,
-          mtimeMs: stat.mtimeMs,
-          content: body,
-          wordCount: countWords(body),
-          tags: frontmatterTags,
-          folder,
-        });
-      }
-    }
-  }
-
-  walk(vaultPath);
-  return results;
-}
-
-// ---------------------------------------------------------------------------
 // Section builders
 // ---------------------------------------------------------------------------
 
@@ -160,18 +74,18 @@ const DAY_MS = 86_400_000;
 const SEVEN_DAYS_MS = 7 * DAY_MS;
 const THIRTY_DAYS_MS = 30 * DAY_MS;
 
-function buildChangesSection(files: VaultFile[], now: number): DigestSection {
-  const recent = files
-    .filter((f) => now - f.mtimeMs <= SEVEN_DAYS_MS)
-    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+function buildChangesSection(notes: VaultNote[], now: number): DigestSection {
+  const recent = notes
+    .filter((f) => now - new Date(f.modifiedAt).getTime() <= SEVEN_DAYS_MS)
+    .sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime());
 
   const items = recent.map((f) => {
-    const daysAgo = Math.floor((now - f.mtimeMs) / DAY_MS);
+    const daysAgo = Math.floor((now - new Date(f.modifiedAt).getTime()) / DAY_MS);
     const when =
       daysAgo === 0 ? "today" : daysAgo === 1 ? "yesterday" : `${daysAgo}d ago`;
     return {
       text: f.name,
-      meta: `${when} · ${f.wordCount} words · ${f.relPath}`,
+      meta: `${when} · ${f.words} words · ${f.path}`,
     };
   });
 
@@ -182,16 +96,16 @@ function buildChangesSection(files: VaultFile[], now: number): DigestSection {
   };
 }
 
-function buildForgottenSection(files: VaultFile[], now: number): DigestSection {
-  const forgotten = files
-    .filter((f) => now - f.mtimeMs > THIRTY_DAYS_MS)
-    .sort((a, b) => a.mtimeMs - b.mtimeMs); // oldest first
+function buildForgottenSection(notes: VaultNote[], now: number): DigestSection {
+  const forgotten = notes
+    .filter((f) => now - new Date(f.modifiedAt).getTime() > THIRTY_DAYS_MS)
+    .sort((a, b) => new Date(a.modifiedAt).getTime() - new Date(b.modifiedAt).getTime());
 
   const items = forgotten.slice(0, 10).map((f) => {
-    const daysAgo = Math.floor((now - f.mtimeMs) / DAY_MS);
+    const daysAgo = Math.floor((now - new Date(f.modifiedAt).getTime()) / DAY_MS);
     return {
       text: f.name,
-      meta: `${daysAgo}d since last edit · ${f.relPath}`,
+      meta: `${daysAgo}d since last edit · ${f.path}`,
     };
   });
 
@@ -202,13 +116,11 @@ function buildForgottenSection(files: VaultFile[], now: number): DigestSection {
   };
 }
 
-const INDEX_PATH = path.join(process.cwd(), ".cortex-index");
 const SIMILARITY_THRESHOLD = 0.75;
 const DIGEST_TOP_CONNECTIONS = 5;
 
 async function buildConnectionsSection(
-  vaultPath: string,
-  files: VaultFile[]
+  notes: VaultNote[]
 ): Promise<DigestSection> {
   const emptySection: DigestSection = {
     type: "connections",
@@ -216,10 +128,10 @@ async function buildConnectionsSection(
     items: [],
   };
 
-  const index = new LocalIndex<ChunkMetadata>(INDEX_PATH);
-  if (!(await index.isIndexCreated())) return emptySection;
+  const hasItems = await indexHasItems();
+  if (!hasItems) return emptySection;
 
-  const items = await index.listItems<ChunkMetadata>();
+  const items = await fetchAllVectors();
   if (items.length === 0) return emptySection;
 
   // Build note → average vector map
@@ -238,23 +150,16 @@ async function buildConnectionsSection(
     noteMap.get(key)!.vectors.push(item.vector);
   }
 
-  const notes = [...noteMap.values()].map((entry) => ({
+  const noteVecs = [...noteMap.values()].map((entry) => ({
     name: entry.name,
     path: entry.path,
     avgVector: averageVectors(entry.vectors),
   }));
 
-  // Build wikilink adjacency
+  // Build wikilink adjacency from vault notes
   const outgoing = new Map<string, Set<string>>();
   for (const note of notes) {
-    const fullPath = path.join(vaultPath, note.path);
-    let content = "";
-    try {
-      content = fs.readFileSync(fullPath, "utf-8");
-    } catch {
-      // missing from disk
-    }
-    outgoing.set(note.name.toLowerCase(), extractWikilinks(content));
+    outgoing.set(note.name.toLowerCase(), extractWikilinks(note.content));
   }
 
   function hasLink(nameA: string, nameB: string): boolean {
@@ -268,7 +173,6 @@ async function buildConnectionsSection(
     );
   }
 
-  // Pairwise cosine similarity
   const suggestions: Array<{
     noteA: string;
     noteB: string;
@@ -277,10 +181,10 @@ async function buildConnectionsSection(
     pathB: string;
   }> = [];
 
-  for (let i = 0; i < notes.length; i++) {
-    for (let j = i + 1; j < notes.length; j++) {
-      const noteA = notes[i];
-      const noteB = notes[j];
+  for (let i = 0; i < noteVecs.length; i++) {
+    for (let j = i + 1; j < noteVecs.length; j++) {
+      const noteA = noteVecs[i];
+      const noteB = noteVecs[j];
       if (noteA.avgVector.length === 0 || noteB.avgVector.length === 0) continue;
 
       const sim = cosineSimilarity(noteA.avgVector, noteB.avgVector);
@@ -318,21 +222,17 @@ async function buildConnectionsSection(
   };
 }
 
-function buildQuestionsSection(files: VaultFile[]): DigestSection {
-  // Collect tag frequency
+function buildQuestionsSection(notes: VaultNote[]): DigestSection {
   const tagCount = new Map<string, number>();
-  for (const f of files) {
+  for (const f of notes) {
     for (const tag of f.tags) {
       const t = tag.toLowerCase().trim();
       if (t) tagCount.set(t, (tagCount.get(t) ?? 0) + 1);
     }
   }
 
-  // Collect word-based "topic" proxies from note names
-  // (normalise to lowercase single tokens)
-  const allNames = files.map((f) => f.name.toLowerCase());
+  const allNames = notes.map((f) => f.name.toLowerCase());
 
-  // Sort tags by frequency (descending)
   const topTags = [...tagCount.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
@@ -340,7 +240,6 @@ function buildQuestionsSection(files: VaultFile[]): DigestSection {
 
   const questions: string[] = [];
 
-  // Heuristic 1: notes with same tag but no wikilinks between them
   if (topTags.length >= 2) {
     const [tagA, tagB] = topTags;
     const countA = tagCount.get(tagA) ?? 0;
@@ -350,7 +249,6 @@ function buildQuestionsSection(files: VaultFile[]): DigestSection {
     );
   }
 
-  // Heuristic 2: tag with many notes but no "synthesis" note (no note named after the tag)
   for (const [tag, count] of tagCount.entries()) {
     if (count >= 3 && !allNames.includes(tag) && !allNames.includes(tag + "s")) {
       questions.push(
@@ -360,21 +258,19 @@ function buildQuestionsSection(files: VaultFile[]): DigestSection {
     }
   }
 
-  // Heuristic 3: forgotten notes with interesting names
-  const forgotten = files.filter(
-    (f) => Date.now() - f.mtimeMs > THIRTY_DAYS_MS
+  const forgotten = notes.filter(
+    (f) => Date.now() - new Date(f.modifiedAt).getTime() > THIRTY_DAYS_MS
   );
   if (forgotten.length > 0) {
-    const oldest = forgotten.sort((a, b) => a.mtimeMs - b.mtimeMs)[0];
+    const oldest = forgotten.sort((a, b) => new Date(a.modifiedAt).getTime() - new Date(b.modifiedAt).getTime())[0];
     questions.push(
-      `"${oldest.name}" hasn't been touched in over ${Math.floor((Date.now() - oldest.mtimeMs) / DAY_MS)} days — is it still relevant, or does it need to be updated or archived?`
+      `"${oldest.name}" hasn't been touched in over ${Math.floor((Date.now() - new Date(oldest.modifiedAt).getTime()) / DAY_MS)} days — is it still relevant, or does it need to be updated or archived?`
     );
   }
 
-  // Heuristic 4: folder with the most notes but no "index" or "readme"
   const folderCount = new Map<string, number>();
-  for (const f of files) {
-    if (f.folder) {
+  for (const f of notes) {
+    if (f.folder && f.folder !== "(root)") {
       folderCount.set(f.folder, (folderCount.get(f.folder) ?? 0) + 1);
     }
   }
@@ -382,7 +278,7 @@ function buildQuestionsSection(files: VaultFile[]): DigestSection {
     const [busyFolder, count] = [...folderCount.entries()].sort(
       (a, b) => b[1] - a[1]
     )[0];
-    const hasIndex = files.some(
+    const hasIndex = notes.some(
       (f) =>
         f.folder === busyFolder &&
         (f.name.toLowerCase() === "index" ||
@@ -396,9 +292,8 @@ function buildQuestionsSection(files: VaultFile[]): DigestSection {
     }
   }
 
-  // Heuristic 5: no connections between the two most-edited files
-  const topTwo = [...files]
-    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+  const topTwo = [...notes]
+    .sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime())
     .slice(0, 2);
   if (topTwo.length === 2) {
     questions.push(
@@ -406,7 +301,6 @@ function buildQuestionsSection(files: VaultFile[]): DigestSection {
     );
   }
 
-  // Cap at 5 and ensure we have at least a default
   if (questions.length === 0) {
     questions.push(
       "What recurring theme appears across your notes that you haven't explicitly written about yet?"
@@ -420,16 +314,15 @@ function buildQuestionsSection(files: VaultFile[]): DigestSection {
   };
 }
 
-function buildStatsSection(files: VaultFile[], now: number): DigestSection {
-  const totalNotes = files.length;
-  const totalWords = files.reduce((sum, f) => sum + f.wordCount, 0);
-  const notesThisWeek = files.filter(
-    (f) => now - f.mtimeMs <= SEVEN_DAYS_MS
+function buildStatsSection(notes: VaultNote[], now: number): DigestSection {
+  const totalNotes = notes.length;
+  const totalWords = notes.reduce((sum, f) => sum + f.words, 0);
+  const notesThisWeek = notes.filter(
+    (f) => now - new Date(f.modifiedAt).getTime() <= SEVEN_DAYS_MS
   ).length;
 
-  // Most active folder (by count)
   const folderCount = new Map<string, number>();
-  for (const f of files) {
+  for (const f of notes) {
     const folder = f.folder || "(root)";
     folderCount.set(folder, (folderCount.get(folder) ?? 0) + 1);
   }
@@ -455,39 +348,37 @@ function buildStatsSection(files: VaultFile[], now: number): DigestSection {
 // ---------------------------------------------------------------------------
 
 export async function GET() {
-  const vaultPath = process.env.VAULT_PATH;
-  if (!vaultPath) {
-    return NextResponse.json(
-      { error: "VAULT_PATH environment variable is not set." },
-      { status: 500 }
-    );
+  try {
+    const notes = await getAllNotes();
+    if (notes.length === 0) {
+      return NextResponse.json(
+        { error: "No vault notes found." },
+        { status: 404 }
+      );
+    }
+
+    const now = Date.now();
+
+    const [connectionsSection] = await Promise.all([
+      buildConnectionsSection(notes),
+    ]);
+
+    const sections: DigestSection[] = [
+      buildStatsSection(notes, now),
+      buildChangesSection(notes, now),
+      connectionsSection,
+      buildForgottenSection(notes, now),
+      buildQuestionsSection(notes),
+    ];
+
+    const response: DigestResponse = {
+      generatedAt: new Date().toISOString(),
+      sections,
+    };
+
+    return NextResponse.json(response);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-  if (!fs.existsSync(vaultPath)) {
-    return NextResponse.json(
-      { error: `Vault directory not found: ${vaultPath}` },
-      { status: 404 }
-    );
-  }
-
-  const now = Date.now();
-  const files = collectMarkdownFiles(vaultPath);
-
-  const [connectionsSection] = await Promise.all([
-    buildConnectionsSection(vaultPath, files),
-  ]);
-
-  const sections: DigestSection[] = [
-    buildStatsSection(files, now),
-    buildChangesSection(files, now),
-    connectionsSection,
-    buildForgottenSection(files, now),
-    buildQuestionsSection(files),
-  ];
-
-  const response: DigestResponse = {
-    generatedAt: new Date().toISOString(),
-    sections,
-  };
-
-  return NextResponse.json(response);
 }

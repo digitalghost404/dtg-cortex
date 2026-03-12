@@ -9,7 +9,7 @@ interface RouteContext {
 export async function GET(_req: Request, ctx: RouteContext) {
   try {
     const { id } = await ctx.params;
-    const session = getSession(id);
+    const session = await getSession(id);
     if (!session) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
@@ -23,7 +23,7 @@ export async function GET(_req: Request, ctx: RouteContext) {
 export async function PUT(req: Request, ctx: RouteContext) {
   try {
     const { id } = await ctx.params;
-    const session = getSession(id);
+    const session = await getSession(id);
     if (!session) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
@@ -49,7 +49,7 @@ export async function PUT(req: Request, ctx: RouteContext) {
     }
 
     session.updatedAt = new Date().toISOString();
-    saveSession(session);
+    await saveSession(session);
     return NextResponse.json(session);
   } catch (err) {
     console.error("[session PUT]", err);
@@ -60,7 +60,7 @@ export async function PUT(req: Request, ctx: RouteContext) {
 export async function DELETE(_req: Request, ctx: RouteContext) {
   try {
     const { id } = await ctx.params;
-    deleteSession(id);
+    await deleteSession(id);
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("[session DELETE]", err);

@@ -13,8 +13,8 @@ import {
 export async function POST(req: Request) {
   // C-2: Rate limiting by IP
   const hdrs = await headers();
-  const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  if (!checkRateLimit(`login:${ip}`, LOGIN_RATE_LIMIT)) {
+  const ip = hdrs.get("x-real-ip") || hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  if (!(await checkRateLimit(`login:${ip}`, LOGIN_RATE_LIMIT))) {
     return NextResponse.json(
       { error: "Too many login attempts. Try again later." },
       { status: 429 }
@@ -44,14 +44,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
 
-  // H-1: Run both checks to prevent timing oracle — always execute both
-  const [passwordValid, totpValid] = await Promise.all([
-    verifyPassword(password, config.passwordHash),
-    verifyTotpWithReplay(totpToken, config.totpSecret),
-  ]);
+  // Verify password first — avoids burning the one-time TOTP token on a wrong password
+  const passwordValid = await verifyPassword(password, config.passwordHash);
+  if (!passwordValid) {
+    return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+  }
 
-  // M-7: Unified error message for all auth failures
-  if (!passwordValid || !totpValid) {
+  // Password valid — now verify TOTP (atomic replay check)
+  const totpValid = await verifyTotpWithReplay(totpToken, config.totpSecret);
+  if (!totpValid) {
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
 

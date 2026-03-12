@@ -20,7 +20,7 @@ export const maxDuration = 30;
 // Memory extraction — heuristic regex, no LLM call
 // ---------------------------------------------------------------------------
 
-function extractMemories(userText: string, sessionId: string): void {
+async function extractMemories(userText: string, sessionId: string): Promise<void> {
   const patterns = [
     { regex: /(?:i prefer|i like|i want you to)\s+(.+?)(?:\.|$)/i, type: "preference" as const },
     { regex: /(?:i(?:'m| am) (?:a|an))\s+(.+?)(?:\.|$)/i, type: "fact" as const },
@@ -32,7 +32,7 @@ function extractMemories(userText: string, sessionId: string): void {
   for (const { regex, type } of patterns) {
     const match = userText.match(regex);
     if (match && match[1]) {
-      addMemory({
+      await addMemory({
         type,
         content: match[1].trim(),
         source: sessionId,
@@ -83,8 +83,6 @@ export async function POST(req: Request) {
   }
 
   // --- Web search ---
-  // Triggered when: (a) user prefixed with /web, OR (b) vault returned no chunks,
-  // OR (c) debate mode is active (always compare notes against live web knowledge)
   const shouldSearchWeb = isExplicitWeb || sources.length === 0 || isDebateMode;
   if (shouldSearchWeb) {
     try {
@@ -108,11 +106,11 @@ export async function POST(req: Request) {
   }
 
   // --- Personality ---
-  const personality = loadPersonality();
+  const personality = await loadPersonality();
   const personalityPrompt = personalityToPrompt(personality);
 
   // --- Memory context ---
-  const memoryContext = getMemoryContext();
+  const memoryContext = await getMemoryContext();
   const memorySection = memoryContext ? `\n\n${memoryContext}` : "";
 
   // --- System prompt ---
@@ -145,8 +143,6 @@ ${personalityPrompt}${memorySection}`;
     systemPrompt = `You are Cortex, an intelligent assistant connected to the user's personal Obsidian knowledge vault. The vault index hasn't been built yet, so you're operating without note context. Let the user know they should index their vault via the button in the top-right corner.\n\n${personalityPrompt}${memorySection}`;
   }
 
-  // Vault sources keep their existing index-based sourceId.
-  // Web sources get a "web|<index>" sourceId prefix.
   const stream = createUIMessageStream({
     async execute({ writer }) {
       // Write source-url chunks for vault notes
@@ -176,7 +172,7 @@ ${personalityPrompt}${memorySection}`;
         onFinish: async ({ response }) => {
           if (!sessionId) return;
           try {
-            const session = getSession(sessionId);
+            const session = await getSession(sessionId);
             if (!session) return;
 
             const updatedMessages: Message[] = messages.map((m) => ({
@@ -237,18 +233,18 @@ ${personalityPrompt}${memorySection}`;
               }
             }
 
-            saveSession(session);
+            await saveSession(session);
 
             // Extract memories from user message
             try {
-              extractMemories(userQuery, sessionId ?? "unknown");
+              await extractMemories(userQuery, sessionId ?? "unknown");
             } catch (memErr) {
               console.error("[chat onFinish memory extract]", memErr);
             }
 
             // Save lineage entry
             try {
-              saveLineageEntry({
+              await saveLineageEntry({
                 id: crypto.randomUUID(),
                 timestamp: new Date().toISOString(),
                 sessionId: sessionId ?? "",

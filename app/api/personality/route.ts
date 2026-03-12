@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { loadPersonality, savePersonality, PersonalitySettings } from "@/lib/personality";
 
 export async function GET() {
-  const settings = loadPersonality();
+  const settings = await loadPersonality();
   return NextResponse.json(settings);
 }
 
@@ -38,6 +38,6 @@ export async function PUT(req: Request) {
     creativity: b.creativity as number,
   };
 
-  savePersonality(settings);
+  await savePersonality(settings);
   return NextResponse.json(settings);
 }

@@ -1,6 +1,5 @@
-import fs from "fs";
-import path from "path";
 import crypto from "crypto";
+import * as kv from "./kv";
 
 export interface MessagePart {
   type: string;
@@ -22,50 +21,30 @@ export interface Session {
   messages: Message[];
 }
 
-interface SessionStore {
-  sessions: Session[];
+const SESSIONS_INDEX_KEY = "sessions:index";
+
+function sessionKey(id: string): string {
+  return `session:${id}`;
 }
 
-const SESSIONS_FILE = path.join(process.cwd(), ".cortex-sessions.json");
+export async function getSessions(): Promise<Session[]> {
+  // Get all session IDs sorted by updatedAt (highest score = most recent)
+  const ids = await kv.zrange(SESSIONS_INDEX_KEY, 0, -1);
+  if (ids.length === 0) return [];
 
-function readStore(): SessionStore {
-  try {
-    if (!fs.existsSync(SESSIONS_FILE)) {
-      return { sessions: [] };
-    }
-    const raw = fs.readFileSync(SESSIONS_FILE, "utf-8");
-    const parsed = JSON.parse(raw) as unknown;
-    if (
-      parsed !== null &&
-      typeof parsed === "object" &&
-      "sessions" in parsed &&
-      Array.isArray((parsed as SessionStore).sessions)
-    ) {
-      return parsed as SessionStore;
-    }
-    return { sessions: [] };
-  } catch {
-    return { sessions: [] };
-  }
+  // Fetch all sessions
+  const sessions = await kv.mget<Session>(...ids.map(sessionKey));
+
+  return sessions
+    .filter((s): s is Session => s !== null)
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
 
-function writeStore(store: SessionStore): void {
-  fs.writeFileSync(SESSIONS_FILE, JSON.stringify(store, null, 2), "utf-8");
+export async function getSession(id: string): Promise<Session | null> {
+  return kv.getJSON<Session>(sessionKey(id));
 }
 
-export function getSessions(): Session[] {
-  const store = readStore();
-  return [...store.sessions].sort(
-    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-  );
-}
-
-export function getSession(id: string): Session | null {
-  const store = readStore();
-  return store.sessions.find((s) => s.id === id) ?? null;
-}
-
-export function createSession(): Session {
+export async function createSession(): Promise<Session> {
   const now = new Date().toISOString();
   const session: Session = {
     id: crypto.randomUUID(),
@@ -74,25 +53,17 @@ export function createSession(): Session {
     updatedAt: now,
     messages: [],
   };
-  const store = readStore();
-  store.sessions.push(session);
-  writeStore(store);
+  await kv.setJSON(sessionKey(session.id), session);
+  await kv.zadd(SESSIONS_INDEX_KEY, new Date(now).getTime(), session.id);
   return session;
 }
 
-export function saveSession(session: Session): void {
-  const store = readStore();
-  const idx = store.sessions.findIndex((s) => s.id === session.id);
-  if (idx === -1) {
-    store.sessions.push(session);
-  } else {
-    store.sessions[idx] = session;
-  }
-  writeStore(store);
+export async function saveSession(session: Session): Promise<void> {
+  await kv.setJSON(sessionKey(session.id), session);
+  await kv.zadd(SESSIONS_INDEX_KEY, new Date(session.updatedAt).getTime(), session.id);
 }
 
-export function deleteSession(id: string): void {
-  const store = readStore();
-  store.sessions = store.sessions.filter((s) => s.id !== id);
-  writeStore(store);
+export async function deleteSession(id: string): Promise<void> {
+  await kv.deleteKey(sessionKey(id));
+  await kv.zrem(SESSIONS_INDEX_KEY, id);
 }

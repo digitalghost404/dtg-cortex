@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import path from "path";
-import { LocalIndex } from "vectra";
+import { fetchAllVectors, indexHasItems } from "@/lib/vector";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,7 +47,6 @@ const CLUSTER_COLORS = [
 // ---------------------------------------------------------------------------
 
 function gaussianRandom(): number {
-  // Box-Muller transform
   const u = 1 - Math.random();
   const v = Math.random();
   return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
@@ -69,11 +67,6 @@ function squaredDistance(a: number[], b: number[]): number {
   return sum;
 }
 
-/**
- * Compute the perplexity-calibrated conditional probabilities P(j|i).
- * Uses binary search to find the bandwidth (beta = 1/(2*sigma^2)) that
- * achieves the target perplexity.
- */
 function computeConditionalP(
   vectors: number[][],
   perplexity: number
@@ -87,14 +80,12 @@ function computeConditionalP(
     let betaMax = Infinity;
     let beta = 1.0;
 
-    // Pre-compute squared distances from i to all j
     const dists: number[] = [];
     for (let j = 0; j < n; j++) {
       dists[j] = j === i ? 0 : squaredDistance(vectors[i], vectors[j]);
     }
 
     for (let iter = 0; iter < 50; iter++) {
-      // Compute unnormalized probabilities
       let sumExp = 0;
       for (let j = 0; j < n; j++) {
         if (j === i) continue;
@@ -103,7 +94,6 @@ function computeConditionalP(
         sumExp += val;
       }
 
-      // Entropy of current distribution
       let entropy = 0;
       for (let j = 0; j < n; j++) {
         if (j === i || sumExp === 0) continue;
@@ -123,7 +113,6 @@ function computeConditionalP(
       }
     }
 
-    // Normalize row
     const rowSum = P[i].reduce((s, v) => s + v, 0);
     if (rowSum > 0) {
       for (let j = 0; j < n; j++) P[i][j] /= rowSum;
@@ -133,9 +122,6 @@ function computeConditionalP(
   return P;
 }
 
-/**
- * Symmetrize and early-exaggerate the joint probability matrix.
- */
 function symmetrizeP(P: number[][], n: number): number[][] {
   const Psym: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
   const total = n * n;
@@ -147,10 +133,6 @@ function symmetrizeP(P: number[][], n: number): number[][] {
   return Psym;
 }
 
-/**
- * Run t-SNE to reduce high-dimensional vectors to 2D.
- * Simple gradient descent with momentum, ~200 iterations.
- */
 function runTSNE(vectors: number[][], perplexity = 30): Array<[number, number]> {
   const n = vectors.length;
 
@@ -158,7 +140,6 @@ function runTSNE(vectors: number[][], perplexity = 30): Array<[number, number]> 
     return vectors.map(() => [Math.random() * 2 - 1, Math.random() * 2 - 1]);
   }
 
-  // If only 2 notes, just place them symmetrically
   if (n === 2) {
     return [
       [-0.5, 0],
@@ -166,14 +147,10 @@ function runTSNE(vectors: number[][], perplexity = 30): Array<[number, number]> 
     ];
   }
 
-  // Clamp perplexity to valid range
   const effectivePerplexity = Math.min(perplexity, Math.floor((n - 1) / 3));
-
-  // Compute high-dimensional affinities
   const Pcond = computeConditionalP(vectors, effectivePerplexity);
   const P = symmetrizeP(Pcond, n);
 
-  // Initialize 2D embeddings randomly (small values to keep things dense initially)
   const Y: Array<[number, number]> = Array.from({ length: n }, () => [
     gaussianRandom() * 0.0001,
     gaussianRandom() * 0.0001,
@@ -194,7 +171,6 @@ function runTSNE(vectors: number[][], perplexity = 30): Array<[number, number]> 
     const exaggeration = iter < EARLY_EXAGGERATION_ITER ? EARLY_EXAGGERATION : 1;
     const momentum = iter < EARLY_EXAGGERATION_ITER ? MOMENTUM_EARLY : MOMENTUM_LATE;
 
-    // Compute low-dimensional affinities Q (Student t-distribution)
     const num: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
     let sumQ = 0;
 
@@ -210,7 +186,6 @@ function runTSNE(vectors: number[][], perplexity = 30): Array<[number, number]> 
     }
     sumQ = Math.max(sumQ, 1e-12);
 
-    // Compute gradients
     const dY: Array<[number, number]> = Array.from({ length: n }, () => [0, 0]);
 
     for (let i = 0; i < n; i++) {
@@ -224,14 +199,12 @@ function runTSNE(vectors: number[][], perplexity = 30): Array<[number, number]> 
       }
     }
 
-    // Update positions with momentum and adaptive learning rates (gains)
     for (let i = 0; i < n; i++) {
       for (let d = 0; d < 2; d++) {
         const grad = dY[i][d];
         const prevGain = gains[i][d];
         const prevVel = iY[i][d];
 
-        // Gain update: increase if grad and velocity have same sign, decrease otherwise
         const newGain = Math.max(
           MIN_GAIN,
           Math.sign(grad) === Math.sign(prevVel) ? prevGain * 0.8 : prevGain + 0.2
@@ -244,7 +217,6 @@ function runTSNE(vectors: number[][], perplexity = 30): Array<[number, number]> 
       }
     }
 
-    // Zero-center the embedding
     if (iter % 10 === 0) {
       const meanX = Y.reduce((s, p) => s + p[0], 0) / n;
       const meanY = Y.reduce((s, p) => s + p[1], 0) / n;
@@ -271,16 +243,13 @@ function kMeans(
   if (n === 0) return [];
   if (k >= n) return points.map((_, i) => i % k);
 
-  // Initialize centroids using k-means++ style (just spread them out initially)
   const centroids: Array<[number, number]> = [];
   const usedIndices = new Set<number>();
 
-  // First centroid: random
   const firstIdx = Math.floor(Math.random() * n);
   centroids.push([points[firstIdx][0], points[firstIdx][1]]);
   usedIndices.add(firstIdx);
 
-  // Remaining centroids: pick farthest from existing centroids
   for (let c = 1; c < k; c++) {
     let maxDist = -1;
     let bestIdx = 0;
@@ -304,7 +273,6 @@ function kMeans(
   let assignments = new Array(n).fill(0);
 
   for (let iter = 0; iter < maxIter; iter++) {
-    // Assign each point to nearest centroid
     const newAssignments = new Array(n).fill(0);
     for (let i = 0; i < n; i++) {
       let minDist = Infinity;
@@ -321,7 +289,6 @@ function kMeans(
       newAssignments[i] = best;
     }
 
-    // Check convergence
     let changed = false;
     for (let i = 0; i < n; i++) {
       if (newAssignments[i] !== assignments[i]) {
@@ -332,7 +299,6 @@ function kMeans(
     assignments = newAssignments;
     if (!changed) break;
 
-    // Recompute centroids
     for (let c = 0; c < k; c++) {
       const members = assignments
         .map((a, idx) => (a === c ? idx : -1))
@@ -382,14 +348,12 @@ function autoLabel(noteNames: string[]): string {
 
 export async function GET(): Promise<NextResponse<ClustersResponse | { error: string }>> {
   try {
-    const indexPath = path.join(process.cwd(), ".cortex-index");
-    const index = new LocalIndex(indexPath);
-
-    if (!(await index.isIndexCreated())) {
+    const hasItems = await indexHasItems();
+    if (!hasItems) {
       return NextResponse.json({ error: "Index not built yet. Run /api/index first." }, { status: 503 });
     }
 
-    const items = await index.listItems();
+    const items = await fetchAllVectors();
 
     if (items.length === 0) {
       return NextResponse.json({ points: [], clusters: [] });
@@ -402,9 +366,9 @@ export async function GET(): Promise<NextResponse<ClustersResponse | { error: st
     >();
 
     for (const item of items) {
-      const notePath = item.metadata.path as string;
-      const noteName = item.metadata.name as string;
-      const vector = item.vector as number[];
+      const notePath = item.metadata.path;
+      const noteName = item.metadata.name;
+      const vector = item.vector;
 
       if (!noteMap.has(notePath)) {
         noteMap.set(notePath, { name: noteName, path: notePath, vectors: [], chunkCount: 0 });
@@ -427,28 +391,19 @@ export async function GET(): Promise<NextResponse<ClustersResponse | { error: st
       return avg;
     });
 
-    // Normalize vectors to unit length (cosine similarity via dot product)
+    // Normalize vectors to unit length
     const unitVectors = avgVectors.map((vec) => {
       const mag = Math.sqrt(dotProduct(vec, vec));
       if (mag === 0) return vec;
       return vec.map((v) => v / mag);
     });
 
-    // Dimensionality reduction with t-SNE
     const coords2D = runTSNE(unitVectors, 30);
 
-    // Auto-detect k for k-means: min(8, floor(n/3)) but at least 1
     const n = notes.length;
     const k = Math.max(1, Math.min(8, Math.floor(n / 3)));
-
-    // Run k-means clustering on the 2D t-SNE coords
     const clusterAssignments = kMeans(coords2D, k);
 
-    // Count connections per note (approximate: number of chunks as proxy for richness)
-    // Use chunk count as a stand-in for "connections" weight
-    const maxChunks = Math.max(...notes.map((n) => n.chunkCount), 1);
-
-    // Normalize 2D coords to roughly [-1, 1] range
     const xs = coords2D.map((p) => p[0]);
     const ys = coords2D.map((p) => p[1]);
     const minX = Math.min(...xs);
@@ -458,7 +413,6 @@ export async function GET(): Promise<NextResponse<ClustersResponse | { error: st
     const rangeX = Math.max(maxX - minX, 1e-9);
     const rangeY = Math.max(maxY - minY, 1e-9);
 
-    // Build points array
     const points: NotePoint[] = notes.map((note, i) => ({
       id: note.path,
       name: note.name,
@@ -469,7 +423,6 @@ export async function GET(): Promise<NextResponse<ClustersResponse | { error: st
       connections: note.chunkCount,
     }));
 
-    // Build cluster summaries
     const clusterGroups = new Map<number, string[]>();
     for (let i = 0; i < points.length; i++) {
       const cid = points[i].cluster;

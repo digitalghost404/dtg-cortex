@@ -23,8 +23,8 @@ export async function GET() {
 
   // Rate limit GET to prevent enumeration
   const hdrs = await headers();
-  const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  if (!checkRateLimit(`setup-get:${ip}`, SETUP_RATE_LIMIT)) {
+  const ip = hdrs.get("x-real-ip") || hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  if (!(await checkRateLimit(`setup-get:${ip}`, SETUP_RATE_LIMIT))) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
 
@@ -43,12 +43,9 @@ export async function GET() {
 
   const uri = getTotpUri(totpSecret);
 
-  // Return the otpauth URI + secret — client generates the QR code
-  // (server-side QR libs require native canvas which fails on Vercel)
   return NextResponse.json({
     setupComplete: false,
     totpUri: uri,
-    totpSecret,
   });
 }
 
@@ -61,8 +58,8 @@ export async function POST(req: Request) {
 
   // Rate limit POST
   const hdrs = await headers();
-  const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  if (!checkRateLimit(`setup-post:${ip}`, SETUP_RATE_LIMIT)) {
+  const ip = hdrs.get("x-real-ip") || hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  if (!(await checkRateLimit(`setup-post:${ip}`, SETUP_RATE_LIMIT))) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
 

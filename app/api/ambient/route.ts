@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-import matter from "gray-matter";
+import { getAllNotes } from "@/lib/vault";
+import type { VaultNote } from "@/lib/vault";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -14,85 +13,16 @@ export interface AmbientCard {
   meta?: string;
 }
 
-interface NoteRecord {
-  name: string;
-  path: string;
-  fullPath: string;
-  content: string;
-  tags: string[];
-  outgoing: string[];
-  modified: Date;
-  firstLine: string;
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-const WIKILINK_RE = /\[\[([^\]]+)\]\]/g;
-
-function collectMarkdownFiles(dir: string): string[] {
-  const results: string[] = [];
-  try {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (entry.name.startsWith(".")) continue;
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        results.push(...collectMarkdownFiles(full));
-      } else if (entry.isFile() && entry.name.endsWith(".md")) {
-        results.push(full);
-      }
-    }
-  } catch {
-    // silently skip unreadable dirs
-  }
-  return results;
-}
-
-function normaliseTag(raw: unknown): string {
-  const s = String(raw).trim();
-  return s.startsWith("#") ? s : `#${s}`;
-}
-
-function extractTags(data: Record<string, unknown>): string[] {
-  const raw = data.tags ?? data.tag ?? data.Topics ?? data.topics ?? null;
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw.map(normaliseTag);
-  if (typeof raw === "string") {
-    return raw
-      .split(/[\s,]+/)
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map(normaliseTag);
-  }
-  return [];
-}
-
-function wikilinkTarget(raw: string): string {
-  return raw.split(/[|#]/)[0].trim();
-}
-
-/** Pick a random subset of `count` items from `arr` without repeats. */
 function pickRandom<T>(arr: T[], count: number): T[] {
   const shuffled = [...arr].sort(() => Math.random() - 0.5);
   return shuffled.slice(0, count);
 }
 
-/** Extract the first non-empty non-frontmatter line from content. */
-function firstLine(content: string): string {
-  const lines = content.split("\n");
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed && !trimmed.startsWith("#") && trimmed.length > 10) {
-      return trimmed.slice(0, 160);
-    }
-  }
-  return "(no excerpt)";
-}
-
-/** Extract 2-4 consecutive sentences from the middle of a note's content. */
 function extractQuote(content: string): string {
-  // Strip markdown syntax lightly
   const cleaned = content
     .replace(/#+\s+/g, "")
     .replace(/\*\*?([^*]+)\*\*?/g, "$1")
@@ -101,7 +31,6 @@ function extractQuote(content: string): string {
     .replace(/`[^`]+`/g, "")
     .trim();
 
-  // Split into sentences
   const sentences = cleaned
     .split(/(?<=[.!?])\s+/)
     .map((s) => s.trim())
@@ -114,11 +43,22 @@ function extractQuote(content: string): string {
   return sentences.slice(start, start + count).join(" ");
 }
 
+function firstLine(content: string): string {
+  const lines = content.split("\n");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith("#") && trimmed.length > 10) {
+      return trimmed.slice(0, 160);
+    }
+  }
+  return "(no excerpt)";
+}
+
 // ---------------------------------------------------------------------------
 // Card generators
 // ---------------------------------------------------------------------------
 
-function makeQuoteCard(notes: NoteRecord[]): AmbientCard | null {
+function makeQuoteCard(notes: VaultNote[]): AmbientCard | null {
   const candidates = notes.filter((n) => n.content.trim().length > 100);
   if (candidates.length === 0) return null;
   const note = candidates[Math.floor(Math.random() * candidates.length)];
@@ -131,15 +71,10 @@ function makeQuoteCard(notes: NoteRecord[]): AmbientCard | null {
   };
 }
 
-function makeStatCard(
-  notes: NoteRecord[],
-  vaultPath: string
-): AmbientCard {
+function makeStatCard(notes: VaultNote[]): AmbientCard {
   const stats = [
     () => {
-      const folders = new Set(
-        notes.map((n) => path.dirname(path.relative(vaultPath, n.fullPath))).filter((d) => d !== ".")
-      );
+      const folders = new Set(notes.map((n) => n.folder).filter((f) => f !== "(root)"));
       return {
         title: "VAULT SCOPE",
         content: `${notes.length}`,
@@ -147,10 +82,7 @@ function makeStatCard(
       };
     },
     () => {
-      const totalWords = notes.reduce((sum, n) => {
-        const words = n.content.trim().split(/\s+/).length;
-        return sum + words;
-      }, 0);
+      const totalWords = notes.reduce((sum, n) => sum + n.words, 0);
       return {
         title: "TOTAL WORDS",
         content: totalWords.toLocaleString(),
@@ -176,8 +108,7 @@ function makeStatCard(
     },
     () => {
       const avgWords = Math.round(
-        notes.reduce((sum, n) => sum + n.content.trim().split(/\s+/).length, 0) /
-          Math.max(1, notes.length)
+        notes.reduce((sum, n) => sum + n.words, 0) / Math.max(1, notes.length)
       );
       return {
         title: "AVG NOTE LENGTH",
@@ -190,7 +121,7 @@ function makeStatCard(
   return { type: "stat", ...fn() };
 }
 
-function makeConnectionCard(notes: NoteRecord[]): AmbientCard | null {
+function makeConnectionCard(notes: VaultNote[]): AmbientCard | null {
   const nameSet = new Set(notes.map((n) => n.name.toLowerCase()));
   const pairs: Array<{ from: string; to: string }> = [];
   for (const note of notes) {
@@ -210,21 +141,21 @@ function makeConnectionCard(notes: NoteRecord[]): AmbientCard | null {
   };
 }
 
-function makeForgottenCard(notes: NoteRecord[]): AmbientCard | null {
+function makeForgottenCard(notes: VaultNote[]): AmbientCard | null {
   const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-  const old = notes.filter((n) => n.modified.getTime() < cutoff);
+  const old = notes.filter((n) => new Date(n.modifiedAt).getTime() < cutoff);
   if (old.length === 0) return null;
   const note = old[Math.floor(Math.random() * old.length)];
-  const daysSince = Math.floor((Date.now() - note.modified.getTime()) / (24 * 60 * 60 * 1000));
+  const daysSince = Math.floor((Date.now() - new Date(note.modifiedAt).getTime()) / (24 * 60 * 60 * 1000));
   return {
     type: "forgotten",
     title: "MEMORY FADING",
-    content: note.firstLine,
+    content: firstLine(note.content),
     meta: `${note.name} · last modified ${daysSince} days ago`,
   };
 }
 
-function makeTagCloudCard(notes: NoteRecord[]): AmbientCard | null {
+function makeTagCloudCard(notes: VaultNote[]): AmbientCard | null {
   const tagCounts = new Map<string, number>();
   for (const note of notes) {
     for (const tag of note.tags) {
@@ -244,14 +175,14 @@ function makeTagCloudCard(notes: NoteRecord[]): AmbientCard | null {
   };
 }
 
-function makeOnThisDayCard(notes: NoteRecord[]): AmbientCard | null {
+function makeOnThisDayCard(notes: VaultNote[]): AmbientCard | null {
   const now = new Date();
   const month = now.getMonth();
   const day = now.getDate();
   const currentYear = now.getFullYear();
 
   const matches = notes.filter((n) => {
-    const d = n.modified;
+    const d = new Date(n.modifiedAt);
     return d.getMonth() === month && d.getDate() === day && d.getFullYear() < currentYear;
   });
   if (matches.length === 0) return null;
@@ -270,59 +201,20 @@ function makeOnThisDayCard(notes: NoteRecord[]): AmbientCard | null {
 // ---------------------------------------------------------------------------
 
 export async function GET() {
-  const vaultPath = process.env.VAULT_PATH;
-  if (!vaultPath) {
-    return NextResponse.json(
-      { error: "VAULT_PATH environment variable is not set." },
-      { status: 500 }
-    );
-  }
-  if (!fs.existsSync(vaultPath)) {
-    return NextResponse.json(
-      { error: `Vault directory not found: ${vaultPath}` },
-      { status: 404 }
-    );
-  }
-
   try {
-    const allPaths = collectMarkdownFiles(vaultPath);
+    const notes = await getAllNotes();
+    if (notes.length === 0) {
+      return NextResponse.json({ cards: [] });
+    }
 
-    const notes: NoteRecord[] = allPaths.map((fullPath) => {
-      const raw = fs.readFileSync(fullPath, "utf8");
-      const { data, content } = matter(raw);
-      const name = path.basename(fullPath, ".md");
-      const relativePath = path.relative(vaultPath, fullPath);
-      const stat = fs.statSync(fullPath);
-
-      const outgoing: string[] = [];
-      let match: RegExpExecArray | null;
-      const re = new RegExp(WIKILINK_RE.source, "g");
-      while ((match = re.exec(content)) !== null) {
-        outgoing.push(wikilinkTarget(match[1]));
-      }
-
-      return {
-        name,
-        path: relativePath,
-        fullPath,
-        content,
-        tags: extractTags(data as Record<string, unknown>),
-        outgoing,
-        modified: stat.mtime,
-        firstLine: firstLine(content),
-      };
-    });
-
-    // Build pool of all possible cards, then pick 5-8 randomly
     const pool: AmbientCard[] = [];
 
-    // Always attempt to add multiple of each type so random selection has variety
     for (let i = 0; i < 4; i++) {
       const c = makeQuoteCard(notes);
       if (c) pool.push(c);
     }
     for (let i = 0; i < 3; i++) {
-      pool.push(makeStatCard(notes, vaultPath));
+      pool.push(makeStatCard(notes));
     }
     for (let i = 0; i < 3; i++) {
       const c = makeConnectionCard(notes);
@@ -341,7 +233,7 @@ export async function GET() {
       if (c) pool.push(c);
     }
 
-    const count = Math.floor(Math.random() * 4) + 5; // 5-8
+    const count = Math.floor(Math.random() * 4) + 5;
     const cards = pickRandom(pool, Math.min(count, pool.length));
 
     return NextResponse.json({ cards });

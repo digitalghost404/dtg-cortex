@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import fs from "fs/promises";
+import * as kv from "@/lib/kv";
+import { isServerlessMode, getVaultPath } from "@/lib/vault";
 
 interface CreateNoteRequest {
   title: string;
@@ -44,11 +46,6 @@ function buildSourcesSection(sourcePaths: string[]): string {
 }
 
 export async function POST(req: NextRequest) {
-  const vaultPath = process.env.VAULT_PATH;
-  if (!vaultPath) {
-    return NextResponse.json({ error: "VAULT_PATH is not configured" }, { status: 500 });
-  }
-
   let body: CreateNoteRequest;
   try {
     body = (await req.json()) as CreateNoteRequest;
@@ -56,7 +53,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { title, content, sourcePaths = [], sessionId } = body;
+  const { title, content, sourcePaths: rawSourcePaths = [], sessionId } = body;
 
   if (!title || typeof title !== "string" || !title.trim()) {
     return NextResponse.json({ error: "title is required" }, { status: 400 });
@@ -65,15 +62,75 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "content is required" }, { status: 400 });
   }
 
+  // Validate sourcePaths: must be an array of strings, capped at 50
+  const sourcePaths = (Array.isArray(rawSourcePaths) ? rawSourcePaths : [])
+    .filter((p): p is string => typeof p === "string" && p.length > 0)
+    .slice(0, 50)
+    .map((p) => p.replace(/[<>"|?*]/g, ""));
+
   const safeTitle = sanitizeTitle(title);
   if (!safeTitle) {
     return NextResponse.json({ error: "title is invalid after sanitization" }, { status: 400 });
   }
 
-  const cortexNotesDir = path.join(vaultPath, "cortex-notes");
   const filename = `${safeTitle}.md`;
-  const filePath = path.join(cortexNotesDir, filename);
   const relativePath = `cortex-notes/${filename}`;
+
+  const frontmatter = buildFrontmatter(safeTitle, sessionId);
+  const sourcesSection = buildSourcesSection(sourcePaths);
+  const noteContent = `${frontmatter}\n\n${content}${sourcesSection}\n`;
+
+  if (isServerlessMode()) {
+    // Write to Redis + add to pending-creates set
+    const noteKey = `vault:note:${relativePath}`;
+
+    // Check if already exists
+    const existing = await kv.hgetall(noteKey);
+    if (existing && Object.keys(existing).length > 0) {
+      return NextResponse.json(
+        { error: `Note already exists: ${relativePath}` },
+        { status: 409 }
+      );
+    }
+
+    // Extract tags and outgoing links from content
+    const tags = ["#cortex-generated"];
+    const outgoing: string[] = [];
+    const wikiRe = /\[\[([^\]]+)\]\]/g;
+    let match: RegExpExecArray | null;
+    while ((match = wikiRe.exec(content)) !== null) {
+      const target = match[1].split(/[|#]/)[0].trim();
+      if (target) outgoing.push(target);
+    }
+
+    const words = content.trim().split(/\s+/).length;
+
+    await kv.hset(noteKey, {
+      name: safeTitle,
+      content,
+      rawContent: noteContent,
+      tags: JSON.stringify(tags),
+      outgoing: JSON.stringify(outgoing),
+      folder: "cortex-notes",
+      words: String(words),
+      modifiedAt: new Date().toISOString(),
+      size: String(noteContent.length),
+    });
+
+    await kv.sadd("vault:notes:index", relativePath);
+    await kv.sadd("vault:pending-creates", relativePath);
+
+    return NextResponse.json({ success: true, path: relativePath }, { status: 201 });
+  }
+
+  // Filesystem mode
+  const vaultPath = getVaultPath();
+  if (!vaultPath) {
+    return NextResponse.json({ error: "VAULT_PATH is not configured" }, { status: 500 });
+  }
+
+  const cortexNotesDir = path.join(vaultPath, "cortex-notes");
+  const filePath = path.join(cortexNotesDir, filename);
 
   // Ensure path stays within vault
   const resolvedVault = path.resolve(vaultPath);
@@ -82,14 +139,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid path" }, { status: 400 });
   }
 
-  // Create directory if it doesn't exist
   try {
     await fs.mkdir(cortexNotesDir, { recursive: true });
   } catch {
     return NextResponse.json({ error: "Failed to create cortex-notes directory" }, { status: 500 });
   }
 
-  // Check if file already exists — 409 Conflict
   try {
     await fs.access(filePath);
     return NextResponse.json(
@@ -99,10 +154,6 @@ export async function POST(req: NextRequest) {
   } catch {
     // File does not exist — proceed
   }
-
-  const frontmatter = buildFrontmatter(safeTitle, sessionId);
-  const sourcesSection = buildSourcesSection(sourcePaths);
-  const noteContent = `${frontmatter}\n\n${content}${sourcesSection}\n`;
 
   try {
     await fs.writeFile(filePath, noteContent, "utf-8");

@@ -1,5 +1,4 @@
-import fs from "fs";
-import path from "path";
+import * as kv from "./kv";
 
 export interface MemoryEntry {
   id: string;
@@ -15,33 +14,30 @@ export interface MemoryStore {
   entries: MemoryEntry[];
 }
 
-const MEMORY_FILE = path.join(process.cwd(), ".cortex-memory.json");
+const KV_KEY = "memory:entries";
 const MAX_ENTRIES = 50;
 
-export function loadMemory(): MemoryStore {
+export async function loadMemory(): Promise<MemoryStore> {
   try {
-    if (!fs.existsSync(MEMORY_FILE)) {
-      return { entries: [] };
-    }
-    const raw = fs.readFileSync(MEMORY_FILE, "utf-8");
-    return JSON.parse(raw) as MemoryStore;
+    const data = await kv.getJSON<MemoryStore>(KV_KEY);
+    return data ?? { entries: [] };
   } catch {
     return { entries: [] };
   }
 }
 
-export function saveMemory(store: MemoryStore): void {
+export async function saveMemory(store: MemoryStore): Promise<void> {
   try {
-    fs.writeFileSync(MEMORY_FILE, JSON.stringify(store, null, 2), "utf-8");
+    await kv.setJSON(KV_KEY, store);
   } catch (err) {
     console.error("[memory saveMemory]", err);
   }
 }
 
-export function addMemory(
+export async function addMemory(
   entry: Omit<MemoryEntry, "id" | "createdAt" | "lastReferencedAt" | "referenceCount">
-): void {
-  const store = loadMemory();
+): Promise<void> {
+  const store = await loadMemory();
   const now = new Date().toISOString();
 
   // Deduplicate: skip if near-identical content already exists (case-insensitive)
@@ -52,7 +48,7 @@ export function addMemory(
   if (duplicate) {
     duplicate.referenceCount += 1;
     duplicate.lastReferencedAt = now;
-    saveMemory(store);
+    await saveMemory(store);
     return;
   }
 
@@ -72,11 +68,11 @@ export function addMemory(
     store.entries = store.entries.slice(0, MAX_ENTRIES);
   }
 
-  saveMemory(store);
+  await saveMemory(store);
 }
 
-export function getRelevantMemories(query: string, limit = 10): MemoryEntry[] {
-  const store = loadMemory();
+export async function getRelevantMemories(query: string, limit = 10): Promise<MemoryEntry[]> {
+  const store = await loadMemory();
   if (store.entries.length === 0) return [];
 
   const words = query
@@ -107,8 +103,8 @@ export function getRelevantMemories(query: string, limit = 10): MemoryEntry[] {
     .map((s) => s.entry);
 }
 
-export function getMemoryContext(): string {
-  const store = loadMemory();
+export async function getMemoryContext(): Promise<string> {
+  const store = await loadMemory();
   if (store.entries.length === 0) return "";
 
   // Take top 10 by reference count for the system prompt
@@ -123,22 +119,22 @@ export function getMemoryContext(): string {
   return `Your memory of this user:\n${lines.join("\n")}`;
 }
 
-export function getAllMemories(): MemoryEntry[] {
-  return loadMemory().entries;
+export async function getAllMemories(): Promise<MemoryEntry[]> {
+  return (await loadMemory()).entries;
 }
 
-export function deleteMemory(id: string): void {
-  const store = loadMemory();
+export async function deleteMemory(id: string): Promise<void> {
+  const store = await loadMemory();
   store.entries = store.entries.filter((e) => e.id !== id);
-  saveMemory(store);
+  await saveMemory(store);
 }
 
-export function touchMemory(id: string): void {
-  const store = loadMemory();
+export async function touchMemory(id: string): Promise<void> {
+  const store = await loadMemory();
   const entry = store.entries.find((e) => e.id === id);
   if (entry) {
     entry.referenceCount += 1;
     entry.lastReferencedAt = new Date().toISOString();
-    saveMemory(store);
+    await saveMemory(store);
   }
 }

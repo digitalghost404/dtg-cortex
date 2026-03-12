@@ -1,5 +1,4 @@
-import fs from "fs";
-import path from "path";
+import * as kv from "./kv";
 
 export interface LineageEntry {
   id: string;
@@ -21,31 +20,34 @@ export interface LineageStore {
   entries: LineageEntry[];
 }
 
-const LINEAGE_FILE = path.join(process.cwd(), ".cortex-lineage.json");
+const KV_KEY = "lineage:entries";
 
-export function loadLineage(): LineageStore {
+export async function loadLineage(): Promise<LineageStore> {
   try {
-    if (!fs.existsSync(LINEAGE_FILE)) {
-      return { entries: [] };
-    }
-    const raw = fs.readFileSync(LINEAGE_FILE, "utf-8");
-    return JSON.parse(raw) as LineageStore;
+    const data = await kv.getJSON<LineageStore>(KV_KEY);
+    return data ?? { entries: [] };
   } catch {
     return { entries: [] };
   }
 }
 
-export function saveLineageEntry(entry: LineageEntry): void {
+const MAX_LINEAGE_ENTRIES = 1000;
+
+export async function saveLineageEntry(entry: LineageEntry): Promise<void> {
   try {
-    const store = loadLineage();
+    const store = await loadLineage();
     store.entries.push(entry);
-    fs.writeFileSync(LINEAGE_FILE, JSON.stringify(store, null, 2), "utf-8");
+    // Prune oldest entries if over limit
+    if (store.entries.length > MAX_LINEAGE_ENTRIES) {
+      store.entries = store.entries.slice(-MAX_LINEAGE_ENTRIES);
+    }
+    await kv.setJSON(KV_KEY, store);
   } catch (err) {
     console.error("[lineage saveLineageEntry]", err);
   }
 }
 
-export function getLineageStats(): {
+export async function getLineageStats(): Promise<{
   totalQueries: number;
   uniqueNotesReferenced: number;
   mostReferencedNotes: Array<{ name: string; path: string; count: number }>;
@@ -57,8 +59,8 @@ export function getLineageStats(): {
     count: number;
   }>;
   queriesPerDay: Array<{ date: string; count: number }>;
-} {
-  const store = loadLineage();
+}> {
+  const store = await loadLineage();
   const { entries } = store;
 
   // --- Note reference counts ---

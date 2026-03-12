@@ -1,26 +1,10 @@
 import { NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-import matter from "gray-matter";
+import { getAllNotes } from "@/lib/vault";
+import type { VaultNote } from "@/lib/vault";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-interface NoteRecord {
-  name: string;
-  /** Path relative to vault root */
-  path: string;
-  fullPath: string;
-  content: string;
-  /** Frontmatter tags — normalised to include the # prefix */
-  tags: string[];
-  /** Raw wikilinks extracted from content e.g. "My Note" */
-  outgoing: string[];
-  modified: Date;
-  words: number;
-  folder: string;
-}
 
 interface RecentlyModifiedNote {
   name: string;
@@ -54,99 +38,17 @@ export interface VaultStats {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const WIKILINK_RE = /\[\[([^\]]+)\]\]/g;
-
-/** Recursively collect all .md file paths under a directory. */
-function collectMarkdownFiles(dir: string): string[] {
-  const results: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name.startsWith(".")) continue;
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      results.push(...collectMarkdownFiles(full));
-    } else if (entry.isFile() && entry.name.endsWith(".md")) {
-      results.push(full);
-    }
-  }
-  return results;
-}
-
-/** Normalise a tag value so it always starts with "#". */
-function normaliseTag(raw: unknown): string {
-  const s = String(raw).trim();
-  return s.startsWith("#") ? s : `#${s}`;
-}
-
-/** Extract tags from gray-matter frontmatter. Handles array or space/comma-separated string. */
-function extractTags(data: Record<string, unknown>): string[] {
-  const raw = data.tags ?? data.tag ?? data.Topics ?? data.topics ?? null;
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw.map(normaliseTag);
-  if (typeof raw === "string") {
-    return raw
-      .split(/[\s,]+/)
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map(normaliseTag);
-  }
-  return [];
-}
-
-/** Extract the display name a wikilink resolves to (drop aliases and headings). */
 function wikilinkTarget(raw: string): string {
-  // [[Note Name#Heading|Alias]] → "Note Name"
   return raw.split(/[|#]/)[0].trim();
-}
-
-/** Count words in a string (split on whitespace). */
-function countWords(text: string): number {
-  const trimmed = text.trim();
-  if (!trimmed) return 0;
-  return trimmed.split(/\s+/).length;
 }
 
 // ---------------------------------------------------------------------------
 // Main computation
 // ---------------------------------------------------------------------------
 
-function computeVaultStats(vaultPath: string): VaultStats {
-  const allPaths = collectMarkdownFiles(vaultPath);
-
-  // ── Build note records ────────────────────────────────────────────────────
-  const notes: NoteRecord[] = allPaths.map((fullPath) => {
-    const relativePath = path.relative(vaultPath, fullPath);
-    const name = path.basename(fullPath, ".md");
-    const folder = path.dirname(relativePath) === "." ? "(root)" : path.dirname(relativePath);
-
-    const raw = fs.readFileSync(fullPath, "utf8");
-    const { data, content } = matter(raw);
-
-    const outgoing: string[] = [];
-    let match: RegExpExecArray | null;
-    const re = new RegExp(WIKILINK_RE.source, "g");
-    while ((match = re.exec(content)) !== null) {
-      outgoing.push(wikilinkTarget(match[1]));
-    }
-
-    const stat = fs.statSync(fullPath);
-
-    return {
-      name,
-      path: relativePath,
-      fullPath,
-      content,
-      tags: extractTags(data as Record<string, unknown>),
-      outgoing,
-      modified: stat.mtime,
-      words: countWords(content),
-      folder,
-    };
-  });
-
+function computeVaultStats(notes: VaultNote[]): VaultStats {
   // ── Build lookup: note name → exists (case-insensitive) ──────────────────
   const nameSet = new Set(notes.map((n) => n.name.toLowerCase()));
-
-  // Also index by full relative path without extension for path-based wikilinks
   const pathSet = new Set(
     notes.map((n) => n.path.replace(/\.md$/, "").toLowerCase())
   );
@@ -171,7 +73,6 @@ function computeVaultStats(vaultPath: string): VaultStats {
   for (const note of notes) {
     for (const target of note.outgoing) {
       const lower = target.toLowerCase();
-      // Find matching note name
       const matched = notes.find((n) => n.name.toLowerCase() === lower);
       if (matched) {
         incomingCount.set(matched.name, (incomingCount.get(matched.name) ?? 0) + 1);
@@ -190,12 +91,12 @@ function computeVaultStats(vaultPath: string): VaultStats {
 
   // ── Recently modified (top 10) ────────────────────────────────────────────
   const recentlyModified: RecentlyModifiedNote[] = [...notes]
-    .sort((a, b) => b.modified.getTime() - a.modified.getTime())
+    .sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime())
     .slice(0, 10)
     .map((n) => ({
       name: n.name + ".md",
       path: n.path,
-      modified: n.modified.toISOString(),
+      modified: n.modifiedAt,
     }));
 
   // ── Top tags ──────────────────────────────────────────────────────────────
@@ -220,10 +121,12 @@ function computeVaultStats(vaultPath: string): VaultStats {
     .map(([folder, count]) => ({ folder, count }));
 
   // ── Total folders ─────────────────────────────────────────────────────────
-  // Count unique actual directories that contain .md files
   const uniqueDirs = new Set(
     notes
-      .map((n) => path.dirname(n.path))
+      .map((n) => {
+        const dir = n.path.replace(/[/\\][^/\\]+$/, "");
+        return dir === n.path ? "." : dir;
+      })
       .filter((d) => d !== ".")
   );
 
@@ -253,23 +156,15 @@ function computeVaultStats(vaultPath: string): VaultStats {
 // ---------------------------------------------------------------------------
 
 export async function GET() {
-  const vaultPath = process.env.VAULT_PATH;
-  if (!vaultPath) {
-    return NextResponse.json(
-      { error: "VAULT_PATH environment variable is not set." },
-      { status: 500 }
-    );
-  }
-
-  if (!fs.existsSync(vaultPath)) {
-    return NextResponse.json(
-      { error: `Vault directory not found: ${vaultPath}` },
-      { status: 404 }
-    );
-  }
-
   try {
-    const stats = computeVaultStats(vaultPath);
+    const notes = await getAllNotes();
+    if (notes.length === 0) {
+      return NextResponse.json(
+        { error: "No vault notes found. Ensure VAULT_PATH is set or sync has been run." },
+        { status: 404 }
+      );
+    }
+    const stats = computeVaultStats(notes);
     return NextResponse.json(stats);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";

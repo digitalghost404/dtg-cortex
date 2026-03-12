@@ -3,7 +3,7 @@ import { getSessions, createSession } from "@/lib/sessions";
 
 export async function GET() {
   try {
-    const sessions = getSessions();
+    const sessions = await getSessions();
     return NextResponse.json(sessions);
   } catch (err) {
     console.error("[sessions GET]", err);
@@ -13,7 +13,7 @@ export async function GET() {
 
 export async function POST() {
   try {
-    const session = createSession();
+    const session = await createSession();
     return NextResponse.json(session, { status: 201 });
   } catch (err) {
     console.error("[sessions POST]", err);

@@ -1,16 +1,8 @@
 import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcrypt";
 import { generateSecret as otpGenerateSecret, verifySync as otpVerifySync, generateURI as otpGenerateURI } from "otplib";
-import fs from "fs/promises";
-import path from "path";
 import crypto from "crypto";
-
-// ---------------------------------------------------------------------------
-// Config file path
-// ---------------------------------------------------------------------------
-
-const AUTH_CONFIG_PATH = path.join(process.cwd(), ".cortex-auth.json");
-const REVOCATION_PATH = path.join(process.cwd(), ".cortex-revoked.json");
+import * as kv from "./kv";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -20,28 +12,24 @@ export interface AuthConfig {
   passwordHash: string;
   totpSecret: string;
   setupComplete: boolean;
-  lastTotpWindow?: number;  // TOTP replay prevention
-  lastTotpToken?: string;
 }
 
 // ---------------------------------------------------------------------------
-// Config I/O (H-3: file permissions 0o600)
+// Config I/O (dual-mode via kv)
 // ---------------------------------------------------------------------------
+
+const AUTH_KEY = "auth:config";
 
 export async function getAuthConfig(): Promise<AuthConfig | null> {
   try {
-    const data = await fs.readFile(AUTH_CONFIG_PATH, "utf-8");
-    return JSON.parse(data) as AuthConfig;
+    return await kv.getJSON<AuthConfig>(AUTH_KEY);
   } catch {
     return null;
   }
 }
 
 export async function saveAuthConfig(config: AuthConfig): Promise<void> {
-  await fs.writeFile(AUTH_CONFIG_PATH, JSON.stringify(config, null, 2), {
-    encoding: "utf-8",
-    mode: 0o600,
-  });
+  await kv.setJSON(AUTH_KEY, config);
 }
 
 export async function isSetupComplete(): Promise<boolean> {
@@ -96,22 +84,11 @@ export async function verifyTotpWithReplay(token: string, secret: string): Promi
   const valid = verifyTotp(token, secret);
   if (!valid) return false;
 
-  const currentWindow = Math.floor(Date.now() / 30000);
-  const config = await getAuthConfig();
-
-  // Reject reuse of same token in same window
-  if (config && config.lastTotpToken === token && config.lastTotpWindow === currentWindow) {
-    return false;
-  }
-
-  // Record this token usage
-  if (config) {
-    config.lastTotpToken = token;
-    config.lastTotpWindow = currentWindow;
-    await saveAuthConfig(config);
-  }
-
-  return true;
+  // Atomic replay prevention: setNX ensures only the first use of a token succeeds.
+  // TTL of 60s covers the current TOTP window (30s) plus adjacency tolerance.
+  const replayKey = `totp:used:${token}`;
+  const wasNew = await kv.setNX(replayKey, "1", 60);
+  return wasNew;
 }
 
 export function getTotpUri(secret: string): string {
@@ -149,7 +126,7 @@ export async function verifyJWT(token: string): Promise<Record<string, unknown> 
       audience: "cortex-owner",
     });
 
-    // Check revocation list
+    // Check revocation
     if (payload.jti && await isTokenRevoked(payload.jti)) {
       return null;
     }
@@ -161,91 +138,44 @@ export async function verifyJWT(token: string): Promise<Record<string, unknown> 
 }
 
 // ---------------------------------------------------------------------------
-// Token revocation (H-5)
+// Token revocation (H-5) — uses Redis SET+TTL per revoked jti
 // ---------------------------------------------------------------------------
-
-interface RevocationList {
-  revoked: { jti: string; exp: number }[];
-}
-
-async function getRevocationList(): Promise<RevocationList> {
-  try {
-    const data = await fs.readFile(REVOCATION_PATH, "utf-8");
-    return JSON.parse(data) as RevocationList;
-  } catch {
-    return { revoked: [] };
-  }
-}
-
-async function saveRevocationList(list: RevocationList): Promise<void> {
-  await fs.writeFile(REVOCATION_PATH, JSON.stringify(list, null, 2), {
-    encoding: "utf-8",
-    mode: 0o600,
-  });
-}
 
 export async function revokeToken(token: string): Promise<void> {
   try {
-    // Decode without full verification to get jti/exp (we're revoking it, not trusting it)
     const { payload } = await jwtVerify(token, getJwtSecret(), {
       issuer: "cortex",
       audience: "cortex-owner",
     });
     if (!payload.jti) return;
 
-    const list = await getRevocationList();
     const now = Math.floor(Date.now() / 1000);
+    const exp = (payload.exp as number) || now + 86400;
+    const ttl = Math.max(exp - now, 1);
 
-    // Prune expired entries
-    list.revoked = list.revoked.filter((r) => r.exp > now);
-
-    // Add this token
-    list.revoked.push({
-      jti: payload.jti,
-      exp: (payload.exp as number) || now + 86400,
-    });
-
-    await saveRevocationList(list);
+    await kv.setWithTTL(`revoked:${payload.jti}`, "1", ttl);
   } catch {
     // Token already invalid — nothing to revoke
   }
 }
 
 async function isTokenRevoked(jti: string): Promise<boolean> {
-  const list = await getRevocationList();
-  return list.revoked.some((r) => r.jti === jti);
+  return kv.exists(`revoked:${jti}`);
 }
 
 // ---------------------------------------------------------------------------
-// Rate limiting (C-2: in-process sliding window)
+// Rate limiting (Redis INCR+EXPIRE or filesystem fallback)
 // ---------------------------------------------------------------------------
-
-interface RateLimitEntry {
-  timestamps: number[];
-}
-
-const rateLimitStore = new Map<string, RateLimitEntry>();
 
 const LOGIN_RATE_LIMIT = { maxAttempts: 5, windowMs: 15 * 60 * 1000 }; // 5 per 15 min
 const SETUP_RATE_LIMIT = { maxAttempts: 10, windowMs: 15 * 60 * 1000 }; // 10 per 15 min
 
-export function checkRateLimit(
+export async function checkRateLimit(
   key: string,
   limit: { maxAttempts: number; windowMs: number } = LOGIN_RATE_LIMIT
-): boolean {
-  const now = Date.now();
-  const entry = rateLimitStore.get(key) || { timestamps: [] };
-
-  // Prune old entries
-  entry.timestamps = entry.timestamps.filter((t) => now - t < limit.windowMs);
-
-  if (entry.timestamps.length >= limit.maxAttempts) {
-    return false; // Rate limited
-  }
-
-  entry.timestamps.push(now);
-  rateLimitStore.set(key, entry);
-  return true; // Allowed
+): Promise<boolean> {
+  const windowSec = Math.ceil(limit.windowMs / 1000);
+  return kv.rateLimit(`ratelimit:${key}`, limit.maxAttempts, windowSec);
 }
 
 export { COOKIE_NAME, LOGIN_RATE_LIMIT, SETUP_RATE_LIMIT };

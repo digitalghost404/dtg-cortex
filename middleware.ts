@@ -10,6 +10,28 @@ function getJwtSecret(): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
+// ---------------------------------------------------------------------------
+// Redis revocation check (Edge-compatible via Upstash REST)
+// ---------------------------------------------------------------------------
+
+async function isTokenRevoked(jti: string): Promise<boolean> {
+  const redisUrl = process.env.KV_REST_API_URL;
+  const redisToken = process.env.KV_REST_API_TOKEN;
+  if (!redisUrl || !redisToken) return false; // No Redis = local dev, skip revocation
+
+  try {
+    const res = await fetch(`${redisUrl}/exists/revoked:${encodeURIComponent(jti)}`, {
+      headers: { Authorization: `Bearer ${redisToken}` },
+    });
+    if (!res.ok) return false;
+    const data = (await res.json()) as { result: number };
+    return data.result === 1;
+  } catch {
+    // If Redis is unreachable, fail closed (deny access)
+    return true;
+  }
+}
+
 async function isAuthenticated(req: NextRequest): Promise<boolean> {
   const token = req.cookies.get(COOKIE_NAME)?.value;
   if (!token) return false;
@@ -18,8 +40,12 @@ async function isAuthenticated(req: NextRequest): Promise<boolean> {
       issuer: "cortex",
       audience: "cortex-owner",
     });
-    // Note: jti revocation check can't hit fs in Edge middleware,
-    // but the route-level verifyJWT() does check it as defense-in-depth
+
+    // Check revocation list in Redis
+    if (payload.jti && (await isTokenRevoked(payload.jti))) {
+      return false;
+    }
+
     return !!payload;
   } catch {
     return false;
@@ -30,27 +56,20 @@ async function isAuthenticated(req: NextRequest): Promise<boolean> {
 // Route classification
 // ---------------------------------------------------------------------------
 
-// Pages that guests can view (read-only, zero API cost)
-const PUBLIC_PAGES = ["/graph", "/vault", "/clusters", "/ambient"];
+// Pages that guests can view (read-only, zero API cost, no private content)
+const PUBLIC_PAGES = ["/graph", "/vault", "/clusters"];
 
-// API routes that guests can call (read-only data, no LLM/embedding calls)
-// C-4 fix: exact paths only — no broad prefixes that match mutating sub-routes
+// API routes that guests can call (metadata only, no private note content)
 const PUBLIC_API_EXACT = [
-  "/api/index/status",
   "/api/graph",
-  "/api/clusters",
   "/api/vault",
   "/api/vault-dna",
-  "/api/ambient",
-  "/api/note",
-  "/api/search",
-  "/api/links",
 ];
 
 // Auth routes — always accessible
 const AUTH_PREFIXES = ["/login", "/setup", "/api/auth"];
 
-// M-4 fix: precise static asset extension list instead of broad pathname.includes(".")
+// Precise static asset extension list (M-4)
 const STATIC_ASSET_RE = /\.(png|jpe?g|gif|svg|ico|webp|woff2?|ttf|otf|css|js|map|json|txt|xml|webmanifest)$/i;
 
 function isPublicPage(pathname: string): boolean {
@@ -60,7 +79,6 @@ function isPublicPage(pathname: string): boolean {
 }
 
 function isPublicApi(pathname: string): boolean {
-  // Only exact matches — no startsWith prefix matching
   return PUBLIC_API_EXACT.includes(pathname);
 }
 
@@ -113,7 +131,7 @@ function isOriginAllowed(req: NextRequest): boolean {
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Skip Next.js internals and static assets (M-4: precise extension matching)
+  // Skip Next.js internals and static assets
   if (
     pathname.startsWith("/_next/static") ||
     pathname.startsWith("/_next/image") ||

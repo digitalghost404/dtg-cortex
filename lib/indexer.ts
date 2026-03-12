@@ -1,11 +1,17 @@
 import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
-import { LocalIndex } from "vectra";
+import {
+  upsertVectors,
+  queryVectors,
+  deleteVectorsByPath,
+  resetIndex,
+  indexHasItems,
+} from "./vector";
+import type { VectorMetadata } from "./vector";
 
 const VAULT_PATH = process.env.VAULT_PATH!;
 const VOYAGE_API_KEY = process.env.VOYAGE_API_KEY!;
-const INDEX_PATH = path.join(process.cwd(), ".cortex-index");
 const CHUNK_SIZE = 500; // words per chunk
 const CHUNK_OVERLAP = 50;
 
@@ -58,15 +64,8 @@ function collectMarkdownFiles(dir: string): string[] {
 export async function buildIndex(): Promise<void> {
   if (!VAULT_PATH) throw new Error("VAULT_PATH is not set in environment");
 
-  const index = new LocalIndex(INDEX_PATH);
-
-  if (!(await index.isIndexCreated())) {
-    await index.createIndex();
-  } else {
-    // Clear existing items for a clean re-index
-    await index.deleteIndex();
-    await index.createIndex();
-  }
+  // Clear existing index for a clean re-index
+  await resetIndex();
 
   const files = collectMarkdownFiles(VAULT_PATH);
   console.log(`Indexing ${files.length} notes...`);
@@ -84,18 +83,19 @@ export async function buildIndex(): Promise<void> {
 
     const embeddings = await embedTexts(chunks);
 
-    for (let i = 0; i < chunks.length; i++) {
-      await index.insertItem({
-        vector: embeddings[i],
-        metadata: {
-          path: relativePath,
-          name: noteName,
-          chunk: i,
-          text: chunks[i],
-          tags: frontmatter.tags ?? [],
-        },
-      });
-    }
+    const items = chunks.map((text, i) => ({
+      id: `${relativePath}#chunk${i}`,
+      vector: embeddings[i],
+      metadata: {
+        path: relativePath,
+        name: noteName,
+        chunk: i,
+        text,
+        tags: frontmatter.tags ?? [],
+      } as VectorMetadata,
+    }));
+
+    await upsertVectors(items);
 
     indexed++;
     if (indexed % 50 === 0) console.log(`  ${indexed}/${files.length} notes indexed`);
@@ -105,28 +105,11 @@ export async function buildIndex(): Promise<void> {
 }
 
 export async function removeFileFromIndex(relativePath: string): Promise<void> {
-  const index = new LocalIndex(INDEX_PATH);
-
-  if (!(await index.isIndexCreated())) {
-    return;
-  }
-
-  const items = await index.listItems();
-  const matching = items.filter((item) => item.metadata.path === relativePath);
-
-  for (const item of matching) {
-    await index.deleteItem(item.id);
-  }
+  await deleteVectorsByPath(relativePath);
 }
 
 export async function indexSingleFile(filePath: string): Promise<void> {
   if (!VAULT_PATH) throw new Error("VAULT_PATH is not set in environment");
-
-  const index = new LocalIndex(INDEX_PATH);
-
-  if (!(await index.isIndexCreated())) {
-    return;
-  }
 
   const relativePath = path.relative(VAULT_PATH, filePath);
 
@@ -142,41 +125,41 @@ export async function indexSingleFile(filePath: string): Promise<void> {
 
   const embeddings = await embedTexts(chunks);
 
-  for (let i = 0; i < chunks.length; i++) {
-    await index.insertItem({
-      vector: embeddings[i],
-      metadata: {
-        path: relativePath,
-        name: noteName,
-        chunk: i,
-        text: chunks[i],
-        tags: frontmatter.tags ?? [],
-      },
-    });
-  }
+  const items = chunks.map((text, i) => ({
+    id: `${relativePath}#chunk${i}`,
+    vector: embeddings[i],
+    metadata: {
+      path: relativePath,
+      name: noteName,
+      chunk: i,
+      text,
+      tags: frontmatter.tags ?? [],
+    } as VectorMetadata,
+  }));
+
+  await upsertVectors(items);
 }
 
 export async function queryIndex(
   query: string,
   topK = 6
 ): Promise<Array<{ text: string; name: string; path: string; score: number }>> {
-  const index = new LocalIndex(INDEX_PATH);
-
-  if (!(await index.isIndexCreated())) {
+  const hasItems = await indexHasItems();
+  if (!hasItems) {
     throw new Error("Index not built yet. Run /api/index first.");
   }
 
   const [queryVector] = await embedTexts([query]);
-  const results = await index.queryItems(queryVector, query, topK);
+  const results = await queryVectors(queryVector, topK);
 
   return results.map((r) => ({
-    text: r.item.metadata.text as string,
-    name: r.item.metadata.name as string,
-    path: r.item.metadata.path as string,
+    text: r.metadata.text,
+    name: r.metadata.name,
+    path: r.metadata.path,
     score: r.score,
   }));
 }
 
-export function indexExists(): boolean {
-  return fs.existsSync(path.join(INDEX_PATH, "index.json"));
+export async function indexExists(): Promise<boolean> {
+  return indexHasItems();
 }

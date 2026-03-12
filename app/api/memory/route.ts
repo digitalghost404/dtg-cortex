@@ -3,7 +3,7 @@ import { getAllMemories, addMemory, deleteMemory } from "@/lib/memory";
 
 export async function GET() {
   try {
-    const memories = getAllMemories();
+    const memories = await getAllMemories();
     return NextResponse.json(memories);
   } catch (err) {
     console.error("[api/memory GET]", err);
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
       ? (type as (typeof validTypes)[number])
       : "fact";
 
-    addMemory({
+    await addMemory({
       type: memType,
       content: content.trim(),
       source: "manual",
@@ -47,7 +47,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "id is required" }, { status: 400 });
     }
 
-    deleteMemory(id);
+    await deleteMemory(id);
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("[api/memory DELETE]", err);

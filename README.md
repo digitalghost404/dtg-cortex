@@ -8,7 +8,7 @@ Your Obsidian vault is full of ideas — but you can't grep intuition. **Cortex*
 
 ---
 
-## ⚡ What Cortex does differently
+## What Cortex does differently
 
 Most note apps let you write. Cortex lets you *think*.
 
@@ -24,10 +24,10 @@ Most note apps let you write. Cortex lets you *think*.
 
 ---
 
-## 🧠 Features
+## Features
 
 ### Chat
-- **RAG-backed Q&A** — Voyage embeddings + Vectra vector search retrieves the most relevant notes for every query
+- **RAG-backed Q&A** — Voyage embeddings + Upstash Vector search retrieves the most relevant notes for every query
 - **Streamed responses** from Claude via Vercel AI SDK — fast, contextual, citation-backed
 - **Session persistence** — conversations are saved and resumable from a sidebar
 - **Web search** — prefix any message with `/web` to pull live results via Tavily
@@ -37,7 +37,7 @@ Most note apps let you write. Cortex lets you *think*.
 - **Memory** — Cortex learns your preferences, interests, and patterns from conversations and injects them into future context
 
 ### Vault exploration
-- **Knowledge graph** — interactive d3-force canvas with live file watcher integration — see changes pulse through the graph in real time
+- **Knowledge graph** — interactive d3-force canvas with live file watcher integration (local dev)
 - **Topic clusters** — 2D scatter plot of your notes grouped by semantic similarity
 - **Vault diagnostics** — health indicators, orphan detection, link stats, and a DNA-style fingerprint of your vault
 - **Note lineage** — which notes keep surfacing in your queries? Lineage tracks frequency and recency
@@ -51,39 +51,77 @@ Most note apps let you write. Cortex lets you *think*.
 
 ---
 
-## 🔒 Auth
+## Auth & Security
 
 Cortex is designed to be deployed on the public internet as a personal tool.
 
 - **Single-user setup** — password + TOTP MFA (scan a QR code on first run)
-- **JWT sessions** with server-side revocation, 24h expiry, strict same-site cookies
-- **Rate limiting** on login and setup endpoints
-- **Guest mode** — unauthenticated visitors can explore the graph, vault diagnostics, clusters, and ambient mode (read-only, zero API cost)
-- **Protected routes** — chat, web search, TTS, sessions, memory, lineage, digest, and settings require authentication
-- **Security headers** — CSP, HSTS, X-Frame-Options DENY, origin validation on all mutations
+- **JWT sessions** with server-side revocation via Redis, 24h expiry, strict same-site cookies
+- **Rate limiting** — Redis-backed INCR+EXPIRE on login and setup endpoints
+- **TOTP replay prevention** — atomic set-if-not-exists prevents reuse of one-time codes
+- **CSRF protection** — origin validation on all mutating requests
+- **Guest mode** — unauthenticated visitors can explore the graph, vault diagnostics, and clusters (read-only, zero API cost)
+- **Protected routes** — chat, web search, TTS, sessions, memory, ambient, lineage, digest, and settings require authentication
+- **Security headers** — CSP, HSTS, X-Frame-Options DENY, X-Content-Type-Options, Referrer-Policy, Permissions-Policy
+- **Edge-compatible token revocation** — middleware checks JWT revocation via Upstash REST API before hitting any route
 
 ---
 
-## 🛠 Tech stack
+## Architecture
+
+Cortex runs on **Vercel serverless functions** with all persistent state stored in **Upstash Redis** and embeddings in **Upstash Vector**. A dual-mode abstraction layer (`lib/kv.ts`) falls back to the local filesystem when Redis credentials are absent, so local development works without any cloud services.
+
+### Data flow
+
+```
+Local vault (.md files)
+        │
+        ▼
+  npm run sync          ← incremental sync via MD5 hashing
+        │
+   ┌────┴────┐
+   ▼         ▼
+Upstash    Upstash
+Redis      Vector
+(notes,    (embeddings,
+ state)     1024-dim voyage-3)
+   │         │
+   └────┬────┘
+        ▼
+  Vercel serverless
+  (Next.js API routes)
+```
+
+### Dual-mode storage
+
+| Environment | State | Embeddings |
+|-------------|-------|------------|
+| **Vercel (production)** | Upstash Redis | Upstash Vector |
+| **Local dev** | Filesystem (`.cortex-kv/`) | Upstash Vector (or skip if no key) |
+
+Mode is determined automatically by the presence of `KV_REST_API_URL`.
+
+---
+
+## Tech stack
 
 | Layer | Library |
 |-------|---------|
 | Framework | Next.js 16, React 19 |
 | AI / LLM | Anthropic Claude via `@ai-sdk/anthropic` + Vercel AI SDK |
-| Embeddings | Voyage AI |
-| Vector store | Vectra (local, file-based) |
+| Embeddings | Voyage AI (voyage-3, 1024 dimensions) |
+| Vector store | Upstash Vector |
+| KV / State | Upstash Redis |
 | TTS | ElevenLabs |
 | Web search | Tavily |
 | Graph | d3-force |
 | Auth | jose (JWT), bcrypt, otplib (TOTP), qrcode |
 | Styling | Tailwind CSS v4 |
-| Vault watch | chokidar |
-
-No external database. All state lives on the local filesystem.
+| Vault watch | chokidar (local dev only) |
 
 ---
 
-## 🚀 Setup
+## Setup
 
 ### 1. Install dependencies
 
@@ -105,6 +143,14 @@ VAULT_PATH=/absolute/path/to/your/obsidian-vault
 # Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 JWT_SECRET=your-random-64-char-hex-string
 
+# Upstash Redis (required for Vercel deployment)
+KV_REST_API_URL=https://...upstash.io
+KV_REST_API_TOKEN=AX...
+
+# Upstash Vector (required for RAG)
+UPSTASH_VECTOR_REST_URL=https://...upstash.io
+UPSTASH_VECTOR_REST_TOKEN=...
+
 # Optional — required for TTS
 ELEVENLABS_API_KEY=...
 ELEVENLABS_VOICE_ID=...
@@ -112,6 +158,8 @@ ELEVENLABS_VOICE_ID=...
 # Optional — required for /web search
 TAVILY_API_KEY=...
 ```
+
+For **local development**, `KV_REST_API_URL` can be omitted — Cortex will use the filesystem for state. You still need `UPSTASH_VECTOR_REST_URL` and `VOYAGE_API_KEY` for embedding/search features.
 
 ### 3. Start the dev server
 
@@ -128,13 +176,21 @@ On first load, Cortex redirects to `/setup`:
 
 This is a one-time flow. After setup, you'll log in with password + MFA code.
 
-### 5. Index your vault
+### 5. Sync your vault
 
-After logging in, hit **INIT VAULT INDEX** from the chat page. This reads every `.md` file in your vault, chunks it, generates Voyage embeddings, and builds a local Vectra index. Leave the file watcher running to pick up changes automatically.
+Push your vault content to Upstash Redis and generate embeddings in Upstash Vector:
+
+```bash
+npm run sync
+```
+
+The sync is **incremental** — it computes MD5 hashes per note and only re-processes changed files. Run it whenever your vault changes, or set up a cron job / CI workflow.
+
+For **local development**, the app reads directly from the filesystem at `VAULT_PATH`, so syncing is only required for the Vercel deployment.
 
 ---
 
-## 🗺 Routes
+## Routes
 
 | Route | Auth | Description |
 |-------|------|-------------|
@@ -142,7 +198,7 @@ After logging in, hit **INIT VAULT INDEX** from the chat page. This reads every 
 | `/graph` | Guest | Interactive knowledge graph |
 | `/vault` | Guest | Vault diagnostics and health |
 | `/clusters` | Guest | Semantic topic clusters |
-| `/ambient` | Guest | Ambient display mode |
+| `/ambient` | Required | Ambient display mode |
 | `/digest` | Required | AI-generated vault digest |
 | `/lineage` | Required | Note reference history |
 | `/memory` | Required | Memory management |
@@ -154,7 +210,7 @@ Guest routes are read-only and make zero LLM/embedding API calls.
 
 ---
 
-## 💬 Cortex in action
+## Cortex in action
 
 ```
 "What have I written about spaced repetition and how does it connect to my productivity notes?"
@@ -176,7 +232,19 @@ Guest routes are read-only and make zero LLM/embedding API calls.
 
 ---
 
-## 📦 Building for production
+## Deploying to Vercel
+
+1. Push the repo to GitHub
+2. Import the project in Vercel
+3. Add all environment variables from `.env.local` to your Vercel project settings
+4. Deploy — the app uses serverless functions with Edge middleware
+5. Run `npm run sync` locally (or in CI) to push vault content to Upstash
+
+The filesystem is read-only on Vercel. All state (sessions, memory, personality, auth config, lineage) is stored in Upstash Redis. Vault content and embeddings are pushed via `npm run sync`.
+
+---
+
+## Building for production
 
 ```bash
 npm run build
@@ -187,7 +255,7 @@ Deploy behind HTTPS. The `JWT_SECRET` and all API keys should be injected via yo
 
 ---
 
-## 📄 License
+## License
 
 [MIT](./LICENSE) with [Commons Clause](https://commonsclause.com/)
 

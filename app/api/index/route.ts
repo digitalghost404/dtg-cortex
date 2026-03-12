@@ -12,5 +12,6 @@ export async function POST() {
 }
 
 export async function GET() {
-  return NextResponse.json({ indexed: indexExists() });
+  const indexed = await indexExists();
+  return NextResponse.json({ indexed });
 }
