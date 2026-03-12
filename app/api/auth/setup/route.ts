@@ -46,6 +46,7 @@ export async function GET() {
   return NextResponse.json({
     setupComplete: false,
     totpUri: uri,
+    totpSecret,
   });
 }
 

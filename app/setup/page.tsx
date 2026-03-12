@@ -8,6 +8,7 @@ export default function SetupPage() {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [totpSecret, setTotpSecret] = useState("");
+  const [totpUri, setTotpUri] = useState("");
   const [showManual, setShowManual] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -26,7 +27,8 @@ export default function SetupPage() {
           router.replace("/login");
           return;
         }
-        setTotpSecret(data.totpSecret);
+        setTotpSecret(data.totpSecret || "");
+        setTotpUri(data.totpUri || "");
         // Generate QR code client-side using browser Canvas API
         if (data.totpUri && canvasRef.current) {
           QRCode.toCanvas(canvasRef.current, data.totpUri, {
@@ -45,20 +47,14 @@ export default function SetupPage() {
 
   // Re-render QR when canvas becomes available (initial render has null ref)
   useEffect(() => {
-    if (!loading && canvasRef.current && totpSecret && step === "enroll") {
-      fetch("/api/auth/setup")
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.totpUri && canvasRef.current) {
-            QRCode.toCanvas(canvasRef.current, data.totpUri, {
-              width: 200,
-              margin: 2,
-              color: { dark: "#22d3ee", light: "#050d14" },
-            }).catch(() => setQrError(true));
-          }
-        });
+    if (!loading && canvasRef.current && totpUri && step === "enroll") {
+      QRCode.toCanvas(canvasRef.current, totpUri, {
+        width: 200,
+        margin: 2,
+        color: { dark: "#22d3ee", light: "#050d14" },
+      }).catch(() => setQrError(true));
     }
-  }, [loading, totpSecret, step]);
+  }, [loading, totpUri, step]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
