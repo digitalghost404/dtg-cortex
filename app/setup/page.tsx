@@ -1,11 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import QRCode from "qrcode";
 
 export default function SetupPage() {
   const router = useRouter();
-  const [qrCodeDataUrl, setQrCodeDataUrl] = useState("");
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [totpSecret, setTotpSecret] = useState("");
+  const [showManual, setShowManual] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [totpToken, setTotpToken] = useState("");
@@ -13,6 +16,7 @@ export default function SetupPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [qrError, setQrError] = useState(false);
 
   useEffect(() => {
     fetch("/api/auth/setup")
@@ -22,7 +26,15 @@ export default function SetupPage() {
           router.replace("/login");
           return;
         }
-        setQrCodeDataUrl(data.qrCodeDataUrl);
+        setTotpSecret(data.totpSecret);
+        // Generate QR code client-side using browser Canvas API
+        if (data.totpUri && canvasRef.current) {
+          QRCode.toCanvas(canvasRef.current, data.totpUri, {
+            width: 200,
+            margin: 2,
+            color: { dark: "#22d3ee", light: "#050d14" },
+          }).catch(() => setQrError(true));
+        }
         setLoading(false);
       })
       .catch(() => {
@@ -30,6 +42,23 @@ export default function SetupPage() {
         setLoading(false);
       });
   }, [router]);
+
+  // Re-render QR when canvas becomes available (initial render has null ref)
+  useEffect(() => {
+    if (!loading && canvasRef.current && totpSecret && step === "enroll") {
+      fetch("/api/auth/setup")
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.totpUri && canvasRef.current) {
+            QRCode.toCanvas(canvasRef.current, data.totpUri, {
+              width: 200,
+              margin: 2,
+              color: { dark: "#22d3ee", light: "#050d14" },
+            }).catch(() => setQrError(true));
+          }
+        });
+    }
+  }, [loading, totpSecret, step]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -133,17 +162,15 @@ export default function SetupPage() {
               borderBottom: "1px solid var(--border-dim)",
               paddingBottom: "0.75rem",
             }}>
-              STEP 1 / 2 — SCAN QR WITH AUTHENTICATOR APP
+              STEP 1 / 2 — ADD TO AUTHENTICATOR APP
             </div>
 
-            {qrCodeDataUrl && (
-              <div style={{ textAlign: "center", marginBottom: "1.25rem" }}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={qrCodeDataUrl}
-                  alt="TOTP QR Code"
+            {/* QR Code (client-side canvas) */}
+            {!qrError && (
+              <div style={{ textAlign: "center", marginBottom: "1rem" }}>
+                <canvas
+                  ref={canvasRef}
                   style={{
-                    width: "200px", height: "200px",
                     borderRadius: "4px",
                     border: "1px solid var(--border-dim)",
                   }}
@@ -151,13 +178,61 @@ export default function SetupPage() {
               </div>
             )}
 
-            <div style={{
-              fontFamily: "var(--font-geist-mono, monospace)",
-              fontSize: "0.5rem", letterSpacing: "0.1em",
-              color: "var(--text-faint)", marginBottom: "1.25rem",
-              textAlign: "center",
-            }}>
-              SCAN WITH GOOGLE AUTHENTICATOR, AUTHY, OR SIMILAR
+            {/* Toggle manual entry */}
+            <div style={{ textAlign: "center", marginBottom: "1.25rem" }}>
+              <button
+                type="button"
+                onClick={() => setShowManual(!showManual)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  fontFamily: "var(--font-geist-mono, monospace)",
+                  fontSize: "0.5rem",
+                  letterSpacing: "0.1em",
+                  color: "var(--text-muted)",
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                  textDecorationColor: "var(--border-dim)",
+                  textUnderlineOffset: "3px",
+                  padding: "0.25rem",
+                }}
+              >
+                {showManual ? "HIDE MANUAL KEY" : (qrError ? "SHOW MANUAL KEY" : "CAN'T SCAN? ENTER KEY MANUALLY")}
+              </button>
+
+              {showManual && totpSecret && (
+                <div
+                  onClick={() => {
+                    navigator.clipboard.writeText(totpSecret);
+                  }}
+                  title="Click to copy"
+                  style={{
+                    fontFamily: "var(--font-geist-mono, monospace)",
+                    fontSize: "0.65rem",
+                    letterSpacing: "0.15em",
+                    color: "var(--text-secondary)",
+                    textAlign: "center",
+                    padding: "0.6rem",
+                    marginTop: "0.75rem",
+                    background: "var(--bg-surface)",
+                    border: "1px solid var(--border-dim)",
+                    borderRadius: "2px",
+                    wordBreak: "break-all",
+                    cursor: "pointer",
+                    transition: "border-color 0.15s",
+                  }}
+                >
+                  {totpSecret}
+                  <div style={{
+                    fontSize: "0.45rem",
+                    color: "var(--text-faint)",
+                    marginTop: "0.4rem",
+                    letterSpacing: "0.08em",
+                  }}>
+                    CLICK TO COPY — ENTER AS MANUAL KEY IN YOUR AUTHENTICATOR
+                  </div>
+                </div>
+              )}
             </div>
           </>
         ) : (

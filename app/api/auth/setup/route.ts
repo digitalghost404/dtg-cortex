@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
-import QRCode from "qrcode";
 import {
   getAuthConfig,
   saveAuthConfig,
@@ -43,14 +42,13 @@ export async function GET() {
   }
 
   const uri = getTotpUri(totpSecret);
-  // Use SVG output — pure JS, no native canvas dependency (works on Vercel)
-  const svgString = await QRCode.toString(uri, { type: "svg" });
-  const qrCodeDataUrl = `data:image/svg+xml;base64,${Buffer.from(svgString).toString("base64")}`;
 
-  // C-3: Only return QR code data URL — do NOT return raw TOTP secret
+  // Return the otpauth URI + secret — client generates the QR code
+  // (server-side QR libs require native canvas which fails on Vercel)
   return NextResponse.json({
     setupComplete: false,
-    qrCodeDataUrl,
+    totpUri: uri,
+    totpSecret,
   });
 }
 
