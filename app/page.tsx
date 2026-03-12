@@ -1749,11 +1749,37 @@ function GuestChatView() {
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [pendingVoiceText, setPendingVoiceText] = useState<string | null>(null);
+  const [liveTranscript, setLiveTranscript] = useState("");
+
+  const { isListening, isSupported: voiceSupported, startListening, stopListening } = useVoiceInput(
+    (text, isFinal) => {
+      if (isFinal) {
+        setInput("");
+        setLiveTranscript("");
+        setPendingVoiceText(text.slice(0, GUEST_MAX_CHARS));
+      } else {
+        setLiveTranscript(text);
+      }
+    }
+  );
+
+  const { isSpeaking, isSupported: ttsSupported, speak, stop: stopSpeaking } = useTTS();
+  const [autoSpeak, setAutoSpeak] = useState(false);
 
   const { messages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({
       api: "/api/chat/guest",
     }),
+    onFinish: ({ message }) => {
+      if (autoSpeak) {
+        const text = message.parts
+          .filter(isTextUIPart)
+          .map((p) => p.text)
+          .join("");
+        if (text) speak(text);
+      }
+    },
   });
 
   const isLoading = status === "streaming" || status === "submitted";
@@ -1763,6 +1789,15 @@ function GuestChatView() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Auto-send voice transcript
+  useEffect(() => {
+    if (pendingVoiceText && !isLoading) {
+      const text = pendingVoiceText;
+      setPendingVoiceText(null);
+      sendMessage({ parts: [{ type: "text", text }] });
+    }
+  }, [pendingVoiceText, isLoading, sendMessage]);
 
   async function handleSend(e?: React.FormEvent) {
     e?.preventDefault();
@@ -1919,6 +1954,20 @@ function GuestChatView() {
                     )}
                   </div>
 
+                  {!isUser && ttsSupported && text && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isSpeaking) stopSpeaking();
+                        else speak(text);
+                      }}
+                      className={`btn-tts${isSpeaking ? " btn-tts--active" : ""}`}
+                      title={isSpeaking ? "Stop speaking" : "Read aloud"}
+                    >
+                      {isSpeaking ? "STOP" : "SPEAK"}
+                    </button>
+                  )}
+
                   {sources.length > 0 && <CitationRow sources={sources} />}
                 </div>
               </div>
@@ -2015,6 +2064,26 @@ function GuestChatView() {
                 style={overLimit ? { borderColor: "var(--color-error, #f87171)" } : undefined}
               />
             </div>
+
+            {/* Mic button */}
+            {voiceSupported && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (isListening) {
+                    stopListening();
+                  } else {
+                    startListening();
+                    setAutoSpeak(true);
+                  }
+                }}
+                className={`btn-mic px-3 py-3 rounded-sm text-xs font-bold flex-shrink-0${isListening ? " btn-mic--listening" : ""}`}
+                title={isListening ? "Stop listening" : "Voice input"}
+              >
+                MIC
+              </button>
+            )}
+
             <button
               type="submit"
               disabled={isLoading || !input.trim() || overLimit}
@@ -2023,6 +2092,19 @@ function GuestChatView() {
               SEND
             </button>
           </form>
+
+          {/* Live voice transcript */}
+          {isListening && liveTranscript && (
+            <p style={{
+              fontFamily: "var(--font-geist-mono, monospace)",
+              fontSize: "0.7rem",
+              color: "var(--cyan-mid)",
+              marginTop: "0.4rem",
+              opacity: 0.8,
+            }}>
+              {liveTranscript}
+            </p>
+          )}
 
           {/* Character counter */}
           <div

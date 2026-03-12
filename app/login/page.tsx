@@ -3,9 +3,11 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "../components/AuthProvider";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { refresh } = useAuth();
   const [step, setStep] = useState<"password" | "totp">("password");
   const [password, setPassword] = useState("");
   const [totpToken, setTotpToken] = useState("");
@@ -54,6 +56,7 @@ export default function LoginPage() {
         setPassword("");
         setTotpToken("");
       } else {
+        await refresh();
         router.replace("/");
       }
     } catch {

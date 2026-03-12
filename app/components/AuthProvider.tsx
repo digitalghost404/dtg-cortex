@@ -8,6 +8,7 @@ interface AuthContextValue {
   isGuest: boolean;
   isLoading: boolean;
   logout: () => Promise<void>;
+  refresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -15,6 +16,7 @@ const AuthContext = createContext<AuthContextValue>({
   isGuest: true,
   isLoading: true,
   logout: async () => {},
+  refresh: async () => {},
 });
 
 export function useAuth() {
@@ -44,6 +46,16 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     router.push("/login");
   }, [router]);
 
+  const refresh = useCallback(async () => {
+    try {
+      const r = await fetch("/api/auth/status");
+      const data = await r.json();
+      setIsAuthenticated(data.authenticated === true);
+    } catch {
+      setIsAuthenticated(false);
+    }
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -51,6 +63,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         isGuest: !isAuthenticated,
         isLoading,
         logout,
+        refresh,
       }}
     >
       {children}
