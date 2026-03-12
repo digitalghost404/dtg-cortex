@@ -128,19 +128,32 @@ function getAllNotesFromDisk(vaultPath: string): VaultNote[] {
 // Redis mode: read from Upstash Redis
 // ---------------------------------------------------------------------------
 
+function safeParseArray(value: unknown): string[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string" && value.length > 0) {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 async function getNoteFromRedis(notePath: string): Promise<VaultNote | null> {
-  const data = await kv.hgetall<Record<string, string>>(`vault:note:${notePath}`);
+  const data = await kv.hgetall<Record<string, unknown>>(`vault:note:${notePath}`);
   if (!data) return null;
   return {
-    name: data.name ?? "",
+    name: String(data.name ?? ""),
     path: notePath,
-    content: data.content ?? "",
-    rawContent: data.rawContent ?? "",
-    tags: data.tags ? JSON.parse(data.tags) : [],
-    outgoing: data.outgoing ? JSON.parse(data.outgoing) : [],
-    folder: data.folder ?? "",
+    content: String(data.content ?? ""),
+    rawContent: String(data.rawContent ?? ""),
+    tags: safeParseArray(data.tags),
+    outgoing: safeParseArray(data.outgoing),
+    folder: String(data.folder ?? ""),
     words: Number(data.words) || 0,
-    modifiedAt: data.modifiedAt ?? "",
+    modifiedAt: String(data.modifiedAt ?? ""),
     size: Number(data.size) || 0,
   };
 }
