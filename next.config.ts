@@ -27,6 +27,7 @@ const nextConfig: NextConfig = {
               "img-src 'self' data:",
               "font-src 'self' https://fonts.gstatic.com",
               "connect-src 'self'",
+              "media-src 'self' blob:",
               "frame-ancestors 'none'",
             ].join("; "),
           },
