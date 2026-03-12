@@ -510,6 +510,105 @@ export default function ClustersPage() {
   }, []);
 
   // ---------------------------------------------------------------------------
+  // Touch events for mobile
+  // ---------------------------------------------------------------------------
+
+  const lastTouchRef = useRef<{ x: number; y: number; dist: number }>({ x: 0, y: 0, dist: 0 });
+
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+        const cx = touch.clientX - rect.left;
+        const cy = touch.clientY - rect.top;
+        const hit = hitTest(cx, cy);
+        lastTouchRef.current = { x: touch.clientX, y: touch.clientY, dist: 0 };
+        dragRef.current = { isDragging: !hit, startX: touch.clientX, startY: touch.clientY };
+        if (hit) {
+          // Immediately show as selected on touch-start for visual feedback
+          hoveredPointRef.current = hit;
+        }
+      } else if (e.touches.length === 2) {
+        const dx = e.touches[1].clientX - e.touches[0].clientX;
+        const dy = e.touches[1].clientY - e.touches[0].clientY;
+        lastTouchRef.current = { x: 0, y: 0, dist: Math.sqrt(dx * dx + dy * dy) };
+        dragRef.current = { isDragging: false, startX: 0, startY: 0 };
+      }
+    },
+    [hitTest]
+  );
+
+  const handleTouchMove = useCallback((e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      const drag = dragRef.current;
+      if (drag.isDragging) {
+        // Pan the canvas
+        const dx = touch.clientX - drag.startX;
+        const dy = touch.clientY - drag.startY;
+        transformRef.current.x += dx;
+        transformRef.current.y += dy;
+        drag.startX = touch.clientX;
+        drag.startY = touch.clientY;
+      }
+    } else if (e.touches.length === 2) {
+      const dx = e.touches[1].clientX - e.touches[0].clientX;
+      const dy = e.touches[1].clientY - e.touches[0].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const factor = dist / (lastTouchRef.current.dist || dist);
+      // Zoom toward the midpoint between the two fingers
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+      const cx = midX - rect.left;
+      const cy = midY - rect.top;
+      const { x: tx, y: ty, scale } = transformRef.current;
+      const newScale = Math.max(0.1, Math.min(10, scale * factor));
+      transformRef.current = {
+        x: cx - (cx - tx) * (newScale / scale),
+        y: cy - (cy - ty) * (newScale / scale),
+        scale: newScale,
+      };
+      lastTouchRef.current.dist = dist;
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      const drag = dragRef.current;
+      const changedTouch = e.changedTouches[0];
+
+      if (!drag.isDragging && changedTouch) {
+        // Was initiated on a node (isDragging=false means we hit a node in touchstart)
+        // Treat as a tap — select the node
+        const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+        const cx = changedTouch.clientX - rect.left;
+        const cy = changedTouch.clientY - rect.top;
+        const hit = hitTest(cx, cy);
+        if (hit) {
+          setSelectedPoint((prev) => (prev?.id === hit.id ? null : hit));
+        } else {
+          setSelectedPoint(null);
+        }
+      } else if (drag.isDragging && changedTouch) {
+        // Was a pan — check if it moved; if not, treat as tap on empty canvas
+        const totalDx = changedTouch.clientX - lastTouchRef.current.x;
+        const totalDy = changedTouch.clientY - lastTouchRef.current.y;
+        const moved = Math.sqrt(totalDx * totalDx + totalDy * totalDy);
+        if (moved < 8) {
+          setSelectedPoint(null);
+        }
+      }
+
+      hoveredPointRef.current = null;
+      dragRef.current = { isDragging: false, startX: 0, startY: 0 };
+    },
+    [hitTest]
+  );
+
+  // ---------------------------------------------------------------------------
   // Derived state for selected point panel
   // ---------------------------------------------------------------------------
 
@@ -536,7 +635,7 @@ export default function ClustersPage() {
       style={{
         display: "flex",
         flexDirection: "column",
-        height: "100vh",
+        height: "100dvh",
         overflow: "hidden",
       }}
     >
@@ -730,6 +829,9 @@ export default function ClustersPage() {
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseLeave}
           onWheel={handleWheel}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
           aria-label="Topic clusters scatter plot"
           role="img"
         />

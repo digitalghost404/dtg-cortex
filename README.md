@@ -60,8 +60,8 @@ Cortex is designed to be deployed on the public internet as a personal tool.
 - **Rate limiting** — Redis-backed INCR+EXPIRE on login and setup endpoints
 - **TOTP replay prevention** — atomic set-if-not-exists prevents reuse of one-time codes
 - **CSRF protection** — origin validation on all mutating requests
-- **Guest mode** — unauthenticated visitors can explore the graph, vault diagnostics, and clusters (read-only, zero API cost)
-- **Protected routes** — chat, web search, TTS, sessions, memory, ambient, lineage, digest, and settings require authentication
+- **Guest mode** — unauthenticated visitors can use vault-backed chat (rate-limited via Haiku) and explore the graph, vault diagnostics, and clusters (read-only, zero API cost)
+- **Protected routes** — full chat, web search, TTS, sessions, memory, ambient, lineage, digest, and settings require authentication
 - **Security headers** — CSP, HSTS, X-Frame-Options DENY, X-Content-Type-Options, Referrer-Policy, Permissions-Policy
 - **Edge-compatible token revocation** — middleware checks JWT revocation via Upstash REST API before hitting any route
 
@@ -194,7 +194,7 @@ For **local development**, the app reads directly from the filesystem at `VAULT_
 
 | Route | Auth | Description |
 |-------|------|-------------|
-| `/` | Required | Chat — the main interface |
+| `/` | Guest | Chat — guest mode (vault-backed, ephemeral, rate-limited) or full interface when authenticated |
 | `/graph` | Guest | Interactive knowledge graph |
 | `/vault` | Guest | Vault diagnostics and health |
 | `/clusters` | Guest | Semantic topic clusters |
@@ -206,7 +206,9 @@ For **local development**, the app reads directly from the filesystem at `VAULT_
 | `/login` | — | Login |
 | `/setup` | — | First-run enrollment |
 
-Guest routes are read-only and make zero LLM/embedding API calls.
+Guest chat (`/api/chat/guest`) uses Claude Haiku, is limited to 500 character inputs, 500 output tokens, 10 messages/hour per IP, and 100 messages/day globally. No session or memory persistence.
+
+Graph, vault, and cluster routes are read-only and make zero LLM/embedding API calls.
 
 ---
 

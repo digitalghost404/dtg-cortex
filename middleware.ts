@@ -57,13 +57,14 @@ async function isAuthenticated(req: NextRequest): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 // Pages that guests can view (read-only, zero API cost, no private content)
-const PUBLIC_PAGES = ["/graph", "/vault", "/clusters"];
+const PUBLIC_PAGES = ["/", "/graph", "/vault", "/clusters"];
 
 // API routes that guests can call (metadata only, no private note content)
 const PUBLIC_API_EXACT = [
   "/api/graph",
   "/api/vault",
   "/api/vault-dna",
+  "/api/chat/guest",
 ];
 
 // Auth routes — always accessible

@@ -8,7 +8,6 @@ const PUBLIC_LINKS = [
   { href: "/vault", label: "VAULT", icon: "\u25A3" },
   { href: "/graph", label: "GRAPH", icon: "\u25C7" },
   { href: "/clusters", label: "CLUSTERS", icon: "\u25CE" },
-  { href: "/ambient", label: "AMBIENT", icon: "\u25C9" },
 ];
 
 export default function GuestNav() {

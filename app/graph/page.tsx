@@ -764,40 +764,128 @@ export default function GraphPage() {
   // Touch events for mobile
   const lastTouchRef = useRef<{ x: number; y: number; dist: number }>({ x: 0, y: 0, dist: 0 });
 
-  const handleTouchStart = useCallback((e: React.TouchEvent<HTMLCanvasElement>) => {
-    if (e.touches.length === 1) {
-      lastTouchRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, dist: 0 };
-      dragRef.current = { isDragging: true, startX: e.touches[0].clientX, startY: e.touches[0].clientY, node: null };
-    } else if (e.touches.length === 2) {
-      const dx = e.touches[1].clientX - e.touches[0].clientX;
-      const dy = e.touches[1].clientY - e.touches[0].clientY;
-      lastTouchRef.current = { x: 0, y: 0, dist: Math.sqrt(dx * dx + dy * dy) };
-    }
-  }, []);
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+        const cx = touch.clientX - rect.left;
+        const cy = touch.clientY - rect.top;
+        const hit = hitTest(cx, cy);
+        lastTouchRef.current = { x: touch.clientX, y: touch.clientY, dist: 0 };
+        dragRef.current = { isDragging: true, startX: touch.clientX, startY: touch.clientY, node: hit };
+        if (hit) {
+          // Pin the node so it follows the finger
+          hit.fx = hit.x;
+          hit.fy = hit.y;
+        }
+      } else if (e.touches.length === 2) {
+        const dx = e.touches[1].clientX - e.touches[0].clientX;
+        const dy = e.touches[1].clientY - e.touches[0].clientY;
+        lastTouchRef.current = { x: 0, y: 0, dist: Math.sqrt(dx * dx + dy * dy) };
+        // Release any dragged node when a second finger appears
+        const drag = dragRef.current;
+        if (drag.node) {
+          drag.node.fx = null;
+          drag.node.fy = null;
+        }
+        dragRef.current = { isDragging: false, startX: 0, startY: 0, node: null };
+      }
+    },
+    [hitTest]
+  );
 
   const handleTouchMove = useCallback((e: React.TouchEvent<HTMLCanvasElement>) => {
     e.preventDefault();
     if (e.touches.length === 1) {
-      const dx = e.touches[0].clientX - dragRef.current.startX;
-      const dy = e.touches[0].clientY - dragRef.current.startY;
-      transformRef.current.x += dx;
-      transformRef.current.y += dy;
-      dragRef.current.startX = e.touches[0].clientX;
-      dragRef.current.startY = e.touches[0].clientY;
+      const touch = e.touches[0];
+      const drag = dragRef.current;
+
+      if (drag.node) {
+        // Drag a node
+        const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+        const cx = touch.clientX - rect.left;
+        const cy = touch.clientY - rect.top;
+        const { x: tx, y: ty, scale } = transformRef.current;
+        const wx = (cx - tx) / scale;
+        const wy = (cy - ty) / scale;
+        drag.node.x = wx;
+        drag.node.y = wy;
+        drag.node.fx = wx;
+        drag.node.fy = wy;
+        if (simulationRef.current) simulationRef.current.alpha(0.3).restart();
+      } else {
+        // Pan the canvas
+        const dx = touch.clientX - drag.startX;
+        const dy = touch.clientY - drag.startY;
+        transformRef.current.x += dx;
+        transformRef.current.y += dy;
+      }
+      drag.startX = touch.clientX;
+      drag.startY = touch.clientY;
     } else if (e.touches.length === 2) {
       const dx = e.touches[1].clientX - e.touches[0].clientX;
       const dy = e.touches[1].clientY - e.touches[0].clientY;
       const dist = Math.sqrt(dx * dx + dy * dy);
       const factor = dist / (lastTouchRef.current.dist || dist);
-      const { scale } = transformRef.current;
-      transformRef.current.scale = Math.max(0.1, Math.min(8, scale * factor));
+      // Zoom toward the midpoint between the two fingers
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+      const cx = midX - rect.left;
+      const cy = midY - rect.top;
+      const { x: tx, y: ty, scale } = transformRef.current;
+      const newScale = Math.max(0.1, Math.min(8, scale * factor));
+      transformRef.current = {
+        x: cx - (cx - tx) * (newScale / scale),
+        y: cy - (cy - ty) * (newScale / scale),
+        scale: newScale,
+      };
       lastTouchRef.current.dist = dist;
     }
   }, []);
 
-  const handleTouchEnd = useCallback(() => {
-    dragRef.current = { isDragging: false, startX: 0, startY: 0, node: null };
-  }, []);
+  const handleTouchEnd = useCallback(
+    (e: React.TouchEvent<HTMLCanvasElement>) => {
+      const drag = dragRef.current;
+
+      if (drag.isDragging && drag.node) {
+        // Check if this was a tap (finger didn't move much) — treat as select
+        const dx = drag.startX - lastTouchRef.current.x;
+        const dy = drag.startY - lastTouchRef.current.y;
+        // Note: startX/Y was updated each move, so compare against original touch start
+        // We track the original start separately in lastTouchRef.current.x/y (set in handleTouchStart)
+        // Compute total movement from the initial touch position
+        const changedTouch = e.changedTouches[0];
+        const totalDx = changedTouch ? changedTouch.clientX - lastTouchRef.current.x : dx;
+        const totalDy = changedTouch ? changedTouch.clientY - lastTouchRef.current.y : dy;
+        const moved = Math.sqrt(totalDx * totalDx + totalDy * totalDy);
+
+        if (moved < 8 && drag.node) {
+          // Tap on a node — select it
+          setSelectedNode((prev) => (prev?.id === drag.node!.id ? null : drag.node));
+        }
+
+        // Unpin the dragged node
+        drag.node.fx = null;
+        drag.node.fy = null;
+      } else if (drag.isDragging) {
+        // Tap on empty canvas — deselect
+        const changedTouch = e.changedTouches[0];
+        if (changedTouch) {
+          const totalDx = changedTouch.clientX - lastTouchRef.current.x;
+          const totalDy = changedTouch.clientY - lastTouchRef.current.y;
+          const moved = Math.sqrt(totalDx * totalDx + totalDy * totalDy);
+          if (moved < 8) {
+            setSelectedNode(null);
+          }
+        }
+      }
+
+      dragRef.current = { isDragging: false, startX: 0, startY: 0, node: null };
+    },
+    []
+  );
 
   // ---------------------------------------------------------------------------
   // Connection count for selected node
@@ -821,7 +909,7 @@ export default function GraphPage() {
       style={{
         display: "flex",
         flexDirection: "column",
-        height: "100vh",
+        height: "100dvh",
         overflow: "hidden",
       }}
     >

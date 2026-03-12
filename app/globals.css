@@ -3418,4 +3418,26 @@ body {
   .cortex-input {
     font-size: 1rem; /* prevent iOS zoom on focus */
   }
+
+  /* Graph info panel - smaller on mobile */
+  .graph-info-panel {
+    width: min(240px, calc(100vw - 2rem));
+    max-height: 50vh;
+    overflow-y: auto;
+  }
+
+  /* Cluster legend - collapsible on mobile */
+  .cluster-legend {
+    max-width: min(220px, calc(100vw - 2rem));
+    min-width: auto;
+    max-height: 40vh;
+    overflow-y: auto;
+  }
+
+  /* Cluster info panel - smaller on mobile */
+  .cluster-info-panel {
+    width: min(260px, calc(100vw - 2rem));
+    max-height: 50vh;
+    overflow-y: auto;
+  }
 }

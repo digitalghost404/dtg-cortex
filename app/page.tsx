@@ -15,6 +15,8 @@ import ContextWindow from "./components/ContextWindow";
 import NoteViewer from "./components/NoteViewer";
 import { useAuth } from "./components/AuthProvider";
 
+const GUEST_MAX_CHARS = 500;
+
 // ---------------------------------------------------------------------------
 // Slash commands
 // ---------------------------------------------------------------------------
@@ -162,8 +164,135 @@ function CitationRow({ sources, onCitationClick }: CitationRowProps) {
 // ---------------------------------------------------------------------------
 
 export default function Home() {
+  const { isAuthenticated, isLoading: authLoading, logout } = useAuth();
+
+  if (authLoading) {
+    return (
+      <div
+        className="flex items-center justify-center h-full cortex-bg"
+        style={{ fontFamily: "var(--font-geist-mono, monospace)", fontSize: "0.65rem", letterSpacing: "0.14em", color: "var(--text-muted)" }}
+      >
+        INITIALISING...
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <GuestHome />;
+  }
+
+  return <AuthenticatedHome logout={logout} />;
+}
+
+// ---------------------------------------------------------------------------
+// Guest home — simplified chat, no session persistence
+// ---------------------------------------------------------------------------
+
+function GuestHome() {
+  return (
+    <div className="flex flex-col h-full cortex-bg overflow-hidden">
+      {/* Header */}
+      <header className="flex items-center justify-between px-3 sm:px-6 py-3 hud-header-rule hud-enter relative z-10 flex-shrink-0">
+        {/* Left cluster */}
+        <div className="flex items-center gap-4">
+          <div className="relative flex-shrink-0 cortex-logo-icon">
+            <VaultDNA size={36} />
+            <span className="logo-bracket logo-bracket--tl" />
+            <span className="logo-bracket logo-bracket--tr" />
+            <span className="logo-bracket logo-bracket--bl" />
+            <span className="logo-bracket logo-bracket--br" />
+          </div>
+          <span className="cortex-wordmark text-sm font-bold tracking-widest uppercase hidden sm:inline">
+            Cortex
+          </span>
+          <span
+            className="text-xs select-none"
+            style={{ color: "var(--text-faint)", fontFamily: "var(--font-geist-mono, monospace)" }}
+          >
+            /
+          </span>
+          {/* Guest mode badge */}
+          <span
+            className="flex items-center gap-1.5 text-xs px-2.5 py-0.5 rounded-sm"
+            style={{
+              fontFamily: "var(--font-geist-mono, monospace)",
+              letterSpacing: "0.08em",
+              color: "var(--cyan-mid)",
+              border: "1px solid var(--border-mid)",
+              fontSize: "0.6rem",
+            }}
+          >
+            <span
+              style={{
+                display: "inline-block",
+                width: 5,
+                height: 5,
+                borderRadius: "50%",
+                background: "var(--cyan-mid)",
+                opacity: 0.7,
+              }}
+            />
+            GUEST MODE
+          </span>
+        </div>
+
+        {/* Right cluster: public nav + login */}
+        <nav className="hidden sm:flex items-center gap-3" aria-label="Guest navigation">
+          <Link
+            href="/vault"
+            className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
+            style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
+          >
+            <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9707;</span>
+            VAULT
+          </Link>
+          <Link
+            href="/graph"
+            className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
+            style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
+          >
+            <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9671;</span>
+            GRAPH
+          </Link>
+          <Link
+            href="/clusters"
+            className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
+            style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
+          >
+            <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9678;</span>
+            CLUSTERS
+          </Link>
+          <Link
+            href="/login"
+            className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
+            style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
+          >
+            <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9211;</span>
+            LOGIN
+          </Link>
+        </nav>
+
+        {/* Mobile login button */}
+        <Link
+          href="/login"
+          className="sm:hidden btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
+          style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.65rem" }}
+        >
+          LOGIN
+        </Link>
+      </header>
+
+      <GuestChatView />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Authenticated home — full-featured chat with sessions
+// ---------------------------------------------------------------------------
+
+function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
   const router = useRouter();
-  const { logout } = useAuth();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [initialMessages, setInitialMessages] = useState<StoredMessage[]>([]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -1604,6 +1733,312 @@ function ChatView({ sessionId, initialMessages, onSessionUpdated, onInjectInput,
             {isSearchMode
               ? "ENTER \u2472 SCAN VAULT \u3000 ESC \u2472 CANCEL SEARCH"
               : "SHIFT+ENTER \u00a0\u2500\u00a0 NEW LINE \u00a0\u00a0\u2502\u00a0\u00a0 ENTER \u00a0\u2500\u00a0 TRANSMIT"}
+          </p>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GuestChatView — ephemeral chat that routes to /api/chat/guest
+// No session persistence, no memory, 500-char input limit
+// ---------------------------------------------------------------------------
+
+function GuestChatView() {
+  const [input, setInput] = useState("");
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const { messages, sendMessage, status } = useChat({
+    transport: new DefaultChatTransport({
+      api: "/api/chat/guest",
+    }),
+  });
+
+  const isLoading = status === "streaming" || status === "submitted";
+  const charsLeft = GUEST_MAX_CHARS - input.length;
+  const overLimit = input.length > GUEST_MAX_CHARS;
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  async function handleSend(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (isLoading || !input.trim() || overLimit) return;
+    sendMessage({ parts: [{ type: "text", text: input }] });
+    setInput("");
+  }
+
+  return (
+    <>
+      {/* ── Message feed ──────────────────────────────────────────────── */}
+      <main className="flex-1 overflow-y-auto px-4 py-8 min-h-0 relative">
+        <div className="max-w-2xl mx-auto flex flex-col gap-5">
+
+          {/* Empty state */}
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-72 gap-6 text-center">
+              <div className="relative flex items-center justify-center">
+                <div
+                  className="absolute rounded-full empty-state-ring"
+                  style={{ width: 72, height: 72, animationDelay: "0s" }}
+                />
+                <div
+                  className="absolute rounded-full empty-state-ring"
+                  style={{ width: 52, height: 52, animationDelay: "0.8s", opacity: 0.5 }}
+                />
+                <div
+                  className="avatar-cortex flex items-center justify-center"
+                  style={{ width: 36, height: 36 }}
+                >
+                  <span
+                    style={{
+                      fontFamily: "var(--font-geist-mono, monospace)",
+                      fontSize: "0.6rem",
+                      fontWeight: 700,
+                      color: "#020408",
+                    }}
+                  >
+                    CX
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <p
+                  style={{
+                    fontFamily: "var(--font-geist-mono, monospace)",
+                    fontSize: "0.7rem",
+                    letterSpacing: "0.18em",
+                    color: "var(--cyan-mid)",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  CORTEX NEURAL INTERFACE
+                </p>
+                <p
+                  className="text-sm max-w-xs leading-relaxed"
+                  style={{ color: "var(--text-secondary)" }}
+                >
+                  Ask questions about the vault. Guest mode is vault-backed but ephemeral — messages are not saved.
+                </p>
+                <p
+                  style={{
+                    fontFamily: "var(--font-geist-mono, monospace)",
+                    fontSize: "0.6rem",
+                    color: "var(--text-muted)",
+                    letterSpacing: "0.1em",
+                    marginTop: "0.5rem",
+                  }}
+                >
+                  &#9642; GUEST MODE &mdash; 10 MSG/HR &mdash; 500 CHAR LIMIT &#9642;
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Messages */}
+          {messages.map((m, index) => {
+            const text = m.parts.filter(isTextUIPart).map((p) => p.text).join("");
+            const isUser = m.role === "user";
+            const isLastAssistant =
+              !isUser &&
+              index === messages.reduce((last, msg, i) => (msg.role === "assistant" ? i : last), -1);
+            const showCursor = isLoading && isLastAssistant;
+
+            const sources: Source[] = !isUser
+              ? m.parts
+                  .filter((p): p is SourceUrlUIPart => p.type === "source-url")
+                  .map((p) => ({
+                    name: p.title ?? p.url,
+                    path: p.url,
+                    score: parseFloat(p.sourceId.split("|")[1] ?? "0"),
+                  }))
+              : [];
+
+            if (!isUser && !text && !showCursor) return null;
+
+            return (
+              <div
+                key={m.id}
+                className={`flex gap-3 ${isUser ? "flex-row-reverse" : "flex-row"}`}
+              >
+                <div className="flex-shrink-0">
+                  <div
+                    className={`flex items-center justify-center ${isUser ? "avatar-user" : "avatar-cortex"}`}
+                    style={{ width: 30, height: 30 }}
+                  >
+                    <span
+                      style={{
+                        fontFamily: "var(--font-geist-mono, monospace)",
+                        fontSize: "0.55rem",
+                        fontWeight: 700,
+                        color: isUser ? "var(--cyan-bright)" : "#020408",
+                        letterSpacing: "0.03em",
+                      }}
+                    >
+                      {isUser ? "USR" : "CX"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1 max-w-prose">
+                  <span
+                    style={{
+                      fontFamily: "var(--font-geist-mono, monospace)",
+                      fontSize: "0.6rem",
+                      letterSpacing: "0.14em",
+                      color: isUser ? "var(--cyan-mid)" : "var(--text-muted)",
+                      textAlign: isUser ? "right" : "left",
+                    }}
+                  >
+                    {isUser ? "GUEST" : "CORTEX"}
+                  </span>
+
+                  <div
+                    className={`px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap rounded-sm ${
+                      isUser ? "msg-user" : "msg-assistant"
+                    }`}
+                    style={{ color: "var(--text-primary)" }}
+                  >
+                    {text}
+                    {showCursor && (
+                      <span
+                        style={{
+                          animation: "blink-cursor 0.7s step-end infinite",
+                          fontFamily: "monospace",
+                          fontSize: "inherit",
+                          color: "var(--cyan-bright)",
+                          marginLeft: "1px",
+                        }}
+                      >
+                        █
+                      </span>
+                    )}
+                  </div>
+
+                  {sources.length > 0 && <CitationRow sources={sources} />}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Loading indicator */}
+          {isLoading && (
+            <div className="flex gap-3">
+              <div className="flex-shrink-0">
+                <div
+                  className="avatar-cortex flex items-center justify-center"
+                  style={{ width: 30, height: 30 }}
+                >
+                  <span
+                    style={{
+                      fontFamily: "var(--font-geist-mono, monospace)",
+                      fontSize: "0.55rem",
+                      fontWeight: 700,
+                      color: "#020408",
+                    }}
+                  >
+                    CX
+                  </span>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span
+                  style={{
+                    fontFamily: "var(--font-geist-mono, monospace)",
+                    fontSize: "0.6rem",
+                    letterSpacing: "0.14em",
+                    color: "var(--text-muted)",
+                  }}
+                >
+                  CORTEX
+                </span>
+                <div className="msg-assistant px-4 py-3 rounded-sm flex items-center gap-3">
+                  <div className="scan-loader">
+                    <div className="scan-loader__bar" />
+                    <div className="scan-loader__bar" />
+                    <div className="scan-loader__bar" />
+                    <div className="scan-loader__bar" />
+                    <div className="scan-loader__bar" />
+                  </div>
+                  <span
+                    style={{
+                      fontFamily: "var(--font-geist-mono, monospace)",
+                      fontSize: "0.65rem",
+                      letterSpacing: "0.12em",
+                      color: "var(--cyan-mid)",
+                    }}
+                  >
+                    TRAVERSING VAULT...
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div ref={bottomRef} />
+        </div>
+      </main>
+
+      {/* ── Input bar ───────────────────────────────────────────────────── */}
+      <div className="px-4 pb-3 sm:pb-6 pt-3 hud-footer-rule relative z-10 flex-shrink-0">
+        <div className="max-w-2xl mx-auto">
+          <form onSubmit={handleSend} className="flex gap-3 items-end">
+            <div className="flex-1 relative">
+              <span
+                className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none select-none"
+                style={{
+                  fontFamily: "var(--font-geist-mono, monospace)",
+                  fontSize: "0.75rem",
+                  color: "var(--cyan-mid)",
+                  lineHeight: 1,
+                }}
+              >
+                {">_"}
+              </span>
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                placeholder="query the vault..."
+                rows={1}
+                className="cortex-input w-full rounded-sm pl-10 pr-4 py-3 max-h-40 overflow-y-auto"
+                style={overLimit ? { borderColor: "var(--color-error, #f87171)" } : undefined}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isLoading || !input.trim() || overLimit}
+              className="btn-send px-5 py-3 rounded-sm text-xs font-bold flex-shrink-0"
+            >
+              SEND
+            </button>
+          </form>
+
+          {/* Character counter */}
+          <div
+            className="flex justify-end mt-1"
+            style={{
+              fontFamily: "var(--font-geist-mono, monospace)",
+              fontSize: "0.55rem",
+              letterSpacing: "0.08em",
+              color: overLimit ? "var(--color-error, #f87171)" : charsLeft <= 50 ? "var(--cyan-mid)" : "var(--text-faint)",
+            }}
+          >
+            {charsLeft} / {GUEST_MAX_CHARS}
+          </div>
+
+          <p className="hidden sm:block text-center hud-hint mt-2.5">
+            SHIFT+ENTER &#x00a0;&#x2500;&#x00a0; NEW LINE &#x00a0;&#x00a0;&#x2502;&#x00a0;&#x00a0; ENTER &#x00a0;&#x2500;&#x00a0; TRANSMIT
           </p>
         </div>
       </div>
