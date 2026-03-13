@@ -94,7 +94,7 @@ export async function POST(req: Request) {
   let sources: Array<{ name: string; path: string; score: number }> = [];
 
   try {
-    const chunks = await queryIndex(userQuery, 6);
+    const chunks = await queryIndex(userQuery, 6, { excludeSecrets: true });
     if (chunks.length > 0) {
       contextBlock =
         "Relevant notes from the vault:\n\n" +

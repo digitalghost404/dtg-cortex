@@ -9,7 +9,7 @@ import {
   indexHasItems,
 } from "./vector";
 import type { VectorMetadata } from "./vector";
-import { getAllNotes, isServerlessMode } from "./vault";
+import { getAllNotes, isServerlessMode, isSecretPath } from "./vault";
 
 const VAULT_PATH = process.env.VAULT_PATH!;
 const VOYAGE_API_KEY = process.env.VOYAGE_API_KEY!;
@@ -210,7 +210,8 @@ export async function indexSingleFile(filePathOrRelative: string): Promise<void>
 
 export async function queryIndex(
   query: string,
-  topK = 6
+  topK = 6,
+  { excludeSecrets = false }: { excludeSecrets?: boolean } = {}
 ): Promise<Array<{ text: string; name: string; path: string; score: number }>> {
   const hasItems = await indexHasItems();
   if (!hasItems) {
@@ -220,12 +221,14 @@ export async function queryIndex(
   const [queryVector] = await embedTexts([query]);
   const results = await queryVectors(queryVector, topK);
 
-  return results.map((r) => ({
-    text: r.metadata.text,
-    name: r.metadata.name,
-    path: r.metadata.path,
-    score: r.score,
-  }));
+  return results
+    .filter((r) => !excludeSecrets || !isSecretPath(r.metadata.path))
+    .map((r) => ({
+      text: r.metadata.text,
+      name: r.metadata.name,
+      path: r.metadata.path,
+      score: r.score,
+    }));
 }
 
 export async function indexExists(): Promise<boolean> {

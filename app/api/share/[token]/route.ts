@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import * as kv from "@/lib/kv";
-import { getNote } from "@/lib/vault";
+import { getNote, isSecretPath } from "@/lib/vault";
 
 interface ShareData {
   notePath: string;
@@ -40,6 +40,14 @@ export async function GET(
     await kv.srem("share:index", token);
     return NextResponse.json(
       { error: "Share has expired" },
+      { status: 404 }
+    );
+  }
+
+  // Block secrets from being served via share links
+  if (isSecretPath(data.notePath)) {
+    return NextResponse.json(
+      { error: "Share not found or expired" },
       { status: 404 }
     );
   }

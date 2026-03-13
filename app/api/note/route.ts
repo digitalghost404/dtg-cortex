@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getNote } from "@/lib/vault";
+import { getNote, isSecretPath } from "@/lib/vault";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -12,6 +12,14 @@ export async function GET(req: NextRequest) {
   // Basic path traversal protection
   if (notePath.includes("..")) {
     return NextResponse.json({ error: "Invalid path" }, { status: 400 });
+  }
+
+  // Block guest access to secrets folder (authenticated users can access)
+  if (isSecretPath(notePath)) {
+    const token = req.cookies.get("cortex-token")?.value;
+    if (!token) {
+      return NextResponse.json({ error: "Note not found" }, { status: 404 });
+    }
   }
 
   try {

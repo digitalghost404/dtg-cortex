@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { getAllNotes } from "@/lib/vault";
+import { getAllNotes, isSecretPath } from "@/lib/vault";
 
 export async function GET() {
   try {
-    const notes = await getAllNotes();
+    const notes = (await getAllNotes()).filter((n) => !isSecretPath(n.path));
 
     // Build a map: tag -> array of { name, path, words }
     const tagMap = new Map<string, { name: string; path: string; words: number }[]>();

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAllNotes } from "@/lib/vault";
+import { getAllNotes, isSecretPath } from "@/lib/vault";
 import type { VaultNote } from "@/lib/vault";
 
 // ---------------------------------------------------------------------------
@@ -121,7 +121,7 @@ function computeVaultDNA(notes: VaultNote[]): VaultDNA {
 
 export async function GET() {
   try {
-    const notes = await getAllNotes();
+    const notes = (await getAllNotes()).filter((n) => !isSecretPath(n.path));
     const dna = computeVaultDNA(notes);
     return NextResponse.json(dna, {
       headers: {

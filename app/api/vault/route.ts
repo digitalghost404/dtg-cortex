@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAllNotes } from "@/lib/vault";
+import { getAllNotes, isSecretPath } from "@/lib/vault";
 import type { VaultNote } from "@/lib/vault";
 
 // ---------------------------------------------------------------------------
@@ -157,7 +157,7 @@ function computeVaultStats(notes: VaultNote[]): VaultStats {
 
 export async function GET() {
   try {
-    const notes = await getAllNotes();
+    const notes = (await getAllNotes()).filter((n) => !isSecretPath(n.path));
     if (notes.length === 0) {
       return NextResponse.json(
         { error: "No vault notes found. Ensure VAULT_PATH is set or sync has been run." },

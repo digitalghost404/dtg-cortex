@@ -34,6 +34,23 @@ const isServerless = !!process.env.KV_REST_API_URL;
 const VAULT_PATH = process.env.VAULT_PATH;
 
 // ---------------------------------------------------------------------------
+// Secrets folder protection
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true if the given path is inside the secrets/ folder.
+ * Works with both relative vault paths ("secrets/foo.md") and full paths.
+ */
+export function isSecretPath(notePath: string): boolean {
+  const normalized = notePath.replace(/\\/g, "/");
+  return (
+    normalized === "secrets" ||
+    normalized.startsWith("secrets/") ||
+    normalized.includes("/secrets/")
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Shared helpers
 // ---------------------------------------------------------------------------
 

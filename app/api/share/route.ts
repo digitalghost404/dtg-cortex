@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import * as kv from "@/lib/kv";
+import { isSecretPath } from "@/lib/vault";
 
 interface ShareData {
   notePath: string;
@@ -23,6 +24,10 @@ export async function POST(req: Request) {
 
   if (!notePath) {
     return NextResponse.json({ error: "notePath is required" }, { status: 400 });
+  }
+
+  if (isSecretPath(notePath)) {
+    return NextResponse.json({ error: "Secret notes cannot be shared" }, { status: 403 });
   }
 
   const token = generateToken();
