@@ -721,6 +721,15 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
               </Link>
 
               <Link
+                href="/notes/new"
+                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
+                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
+              >
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>+</span>
+                NEW NOTE
+              </Link>
+
+              <Link
                 href="/graph"
                 className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
                 style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
@@ -864,6 +873,7 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
                   { href: "/vault",    icon: "\u25c7", label: "VAULT"    },
                   { href: "/tags",     icon: "\u2606", label: "TAGS"     },
                   { href: "/discover", icon: "\u2740", label: "DISCOVER" },
+                  { href: "/notes/new", icon: "+",     label: "NEW NOTE" },
                   { href: "/graph",    icon: "\u25c7", label: "GRAPH"    },
                   { href: "/ambient",  icon: "\u25c9", label: "AMBIENT"  },
                   { href: "/lineage",  icon: "\u25c8", label: "LINEAGE"  },

@@ -9,6 +9,8 @@ interface CreateNoteRequest {
   content: string;
   sourcePaths?: string[];
   sessionId?: string;
+  folder?: string;   // vault-relative folder path
+  tags?: string[];   // custom tags
 }
 
 function sanitizeTitle(title: string): string {
@@ -19,7 +21,17 @@ function sanitizeTitle(title: string): string {
     .slice(0, 200);
 }
 
-function buildFrontmatter(title: string, sessionId?: string): string {
+function sanitizeFolder(raw: string): string {
+  return raw
+    .replace(/\.\./g, "")
+    .replace(/[<>"|?*:]/g, "")
+    .replace(/\/+/g, "/")
+    .replace(/^\/|\/$/g, "")
+    .trim()
+    .slice(0, 200);
+}
+
+function buildFrontmatter(title: string, tags: string[], sessionId?: string): string {
   const created = new Date().toISOString().slice(0, 10);
   const lines = [
     "---",
@@ -31,7 +43,9 @@ function buildFrontmatter(title: string, sessionId?: string): string {
     lines.push(`session: "${sessionId}"`);
   }
   lines.push("tags:");
-  lines.push("  - cortex-generated");
+  for (const tag of tags) {
+    lines.push(`  - ${tag.replace(/^#/, "")}`);
+  }
   lines.push("---");
   return lines.join("\n");
 }
@@ -73,10 +87,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "title is invalid after sanitization" }, { status: 400 });
   }
 
-  const filename = `${safeTitle}.md`;
-  const relativePath = `cortex-notes/${filename}`;
+  // Resolve target folder
+  const folder = body.folder ? sanitizeFolder(body.folder) : "cortex-notes";
 
-  const frontmatter = buildFrontmatter(safeTitle, sessionId);
+  const filename = `${safeTitle}.md`;
+  const relativePath = folder ? `${folder}/${filename}` : filename;
+
+  // Merge custom tags with the default tag
+  const customTags = (Array.isArray(body.tags) ? body.tags : [])
+    .filter((t): t is string => typeof t === "string" && t.length > 0)
+    .slice(0, 20)
+    .map((t) => (t.startsWith("#") ? t : `#${t}`));
+  const tags = ["#cortex-generated", ...customTags.filter((t) => t !== "#cortex-generated")];
+
+  const frontmatter = buildFrontmatter(safeTitle, tags, sessionId);
   const sourcesSection = buildSourcesSection(sourcePaths);
   const noteContent = `${frontmatter}\n\n${content}${sourcesSection}\n`;
 
@@ -93,8 +117,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Extract tags and outgoing links from content
-    const tags = ["#cortex-generated"];
+    // Extract outgoing links from content
     const outgoing: string[] = [];
     const wikiRe = /\[\[([^\]]+)\]\]/g;
     let match: RegExpExecArray | null;
@@ -111,7 +134,7 @@ export async function POST(req: NextRequest) {
       rawContent: noteContent,
       tags: JSON.stringify(tags),
       outgoing: JSON.stringify(outgoing),
-      folder: "cortex-notes",
+      folder,
       words: String(words),
       modifiedAt: new Date().toISOString(),
       size: String(noteContent.length),
@@ -129,8 +152,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "VAULT_PATH is not configured" }, { status: 500 });
   }
 
-  const cortexNotesDir = path.join(vaultPath, "cortex-notes");
-  const filePath = path.join(cortexNotesDir, filename);
+  const noteDir = path.join(vaultPath, folder);
+  const filePath = path.join(noteDir, filename);
 
   // Ensure path stays within vault
   const resolvedVault = path.resolve(vaultPath);
@@ -140,9 +163,9 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    await fs.mkdir(cortexNotesDir, { recursive: true });
+    await fs.mkdir(noteDir, { recursive: true });
   } catch {
-    return NextResponse.json({ error: "Failed to create cortex-notes directory" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to create note directory" }, { status: 500 });
   }
 
   try {

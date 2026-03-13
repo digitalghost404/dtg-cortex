@@ -43,6 +43,7 @@ Most note apps let you write. Cortex lets you *think*.
 |---------|-------------|
 | **Tag browser** | Browse every tag in your vault, see note counts, expand to view tagged notes — filterable and mobile-friendly |
 | **Discover** | Random note surfacing — tap shuffle to rediscover forgotten ideas with content previews, tags, and connection counts |
+| **Note editor** | Create new notes from the browser — folder picker, tag input, markdown editor with live preview |
 | **Vault diagnostics** | Health indicators, orphan detection, link stats, and a DNA-style fingerprint of your vault |
 | **Knowledge graph** | Interactive d3-force canvas with live file watcher integration (local dev) |
 | **Topic clusters** | 2D scatter plot of your notes grouped by semantic similarity |
@@ -204,6 +205,7 @@ For **local development**, the app reads directly from the filesystem at `VAULT_
 | `/vault` | Guest | Vault diagnostics and health |
 | `/tags` | Guest | Tag browser — explore every tag and its notes |
 | `/discover` | Guest | Random note discovery — shuffle through your vault |
+| `/notes/new` | Required | Note editor — create new notes with folder picker and tags |
 | `/graph` | Required | Interactive knowledge graph |
 | `/clusters` | Required | Semantic topic clusters |
 | `/ambient` | Required | Ambient display mode |
