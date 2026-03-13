@@ -216,7 +216,10 @@ export function useNeuralSounds() {
     };
   }, []);
 
-  // ── Neuron activation sound ───────────────────────────────────────────
+  // ── Neural Discharge — neuron activation ────────────────────────────
+  // Static crackle transient layered with a downward sine sweep.
+  // Sounds like an actual neuron firing — electrical impulse with
+  // organic weight. The crackle provides attack, the sweep gives body.
   const playActivation = useCallback(
     (score: number, sequenceIndex: number) => {
       const pool = getPool();
@@ -227,53 +230,81 @@ export function useNeuralSounds() {
       lastActivationTimeRef.current = now;
 
       const delay = sequenceIndex * 0.15;
-      const baseFreq = 400 + score * 300 + (sequenceIndex % 5) * 60;
+      const t0 = now + delay;
 
-      const osc = pool.ctx.createOscillator();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(baseFreq, now + delay);
-      osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.5, now + delay + 0.08);
-      osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.8, now + delay + 0.4);
+      // Layer 1: Static crackle — short noise burst through resonant filter
+      const crackleLen = Math.floor(pool.ctx.sampleRate * 0.06);
+      const crackleBuf = pool.ctx.createBuffer(1, crackleLen, pool.ctx.sampleRate);
+      const crackleData = crackleBuf.getChannelData(0);
+      for (let i = 0; i < crackleLen; i++) {
+        // Sharp exponential decay with some randomized spikes
+        const decay = Math.exp(-i / (crackleLen * 0.12));
+        const spike = Math.random() > 0.92 ? 2.5 : 1; // occasional sharp pops
+        crackleData[i] = (Math.random() * 2 - 1) * decay * spike;
+      }
+      const crackle = pool.ctx.createBufferSource();
+      crackle.buffer = crackleBuf;
 
-      const osc2 = pool.ctx.createOscillator();
-      osc2.type = "sine";
-      osc2.frequency.setValueAtTime(baseFreq * 2.01, now + delay);
-      osc2.frequency.exponentialRampToValueAtTime(baseFreq * 1.5, now + delay + 0.3);
+      // Resonant highpass gives the crackle an electrical edge
+      const crackleFilter = pool.ctx.createBiquadFilter();
+      crackleFilter.type = "highpass";
+      crackleFilter.frequency.value = 800 + sequenceIndex * 200;
+      crackleFilter.Q.value = 2.5;
 
-      const env = pool.ctx.createGain();
-      env.gain.setValueAtTime(0, now + delay);
-      env.gain.linearRampToValueAtTime(0.3 * score, now + delay + 0.02);
-      env.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.5);
+      const crackleEnv = pool.ctx.createGain();
+      crackleEnv.gain.setValueAtTime(0.4 * score, t0);
+      crackleEnv.gain.exponentialRampToValueAtTime(0.001, t0 + 0.08);
 
-      const env2 = pool.ctx.createGain();
-      env2.gain.setValueAtTime(0, now + delay);
-      env2.gain.linearRampToValueAtTime(0.1 * score, now + delay + 0.01);
-      env2.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.3);
+      crackle.connect(crackleFilter);
+      crackleFilter.connect(crackleEnv);
+      crackleEnv.connect(pool.masterGain);
 
-      const delayNode = pool.ctx.createDelay(0.3);
-      delayNode.delayTime.value = 0.12;
-      const delayGain = pool.ctx.createGain();
-      delayGain.gain.value = 0.2;
+      // Layer 2: Downward sine sweep — the "discharge" body
+      // Starts at a frequency influenced by score, sweeps down fast
+      const sweepFreq = 500 + score * 200 + (sequenceIndex % 4) * 50;
+      const sweep = pool.ctx.createOscillator();
+      sweep.type = "sine";
+      sweep.frequency.setValueAtTime(sweepFreq, t0);
+      sweep.frequency.exponentialRampToValueAtTime(80, t0 + 0.2);
+      sweep.frequency.exponentialRampToValueAtTime(40, t0 + 0.35);
 
-      osc.connect(env);
-      osc2.connect(env2);
-      env.connect(pool.masterGain);
-      env2.connect(pool.masterGain);
-      env.connect(delayNode);
-      delayNode.connect(delayGain);
-      delayGain.connect(pool.masterGain);
+      const sweepEnv = pool.ctx.createGain();
+      sweepEnv.gain.setValueAtTime(0, t0);
+      sweepEnv.gain.linearRampToValueAtTime(0.2 * score, t0 + 0.008);
+      sweepEnv.gain.exponentialRampToValueAtTime(0.04, t0 + 0.12);
+      sweepEnv.gain.exponentialRampToValueAtTime(0.001, t0 + 0.4);
 
-      osc.start(now + delay);
-      osc2.start(now + delay);
-      osc.stop(now + delay + 0.6);
-      osc2.stop(now + delay + 0.4);
+      sweep.connect(sweepEnv);
+      sweepEnv.connect(pool.masterGain);
+
+      // Layer 3: Sub-frequency thud — weight under the discharge
+      const thud = pool.ctx.createOscillator();
+      thud.type = "sine";
+      thud.frequency.setValueAtTime(90, t0);
+      thud.frequency.exponentialRampToValueAtTime(45, t0 + 0.08);
+
+      const thudEnv = pool.ctx.createGain();
+      thudEnv.gain.setValueAtTime(0, t0);
+      thudEnv.gain.linearRampToValueAtTime(0.15 * score, t0 + 0.005);
+      thudEnv.gain.exponentialRampToValueAtTime(0.001, t0 + 0.18);
+
+      thud.connect(thudEnv);
+      thudEnv.connect(pool.masterGain);
+
+      crackle.start(t0);
+      sweep.start(t0);
+      thud.start(t0);
+      crackle.stop(t0 + 0.1);
+      sweep.stop(t0 + 0.45);
+      thud.stop(t0 + 0.2);
     },
     [getPool]
   );
 
-  // ── Cinematic pulse whoosh ────────────────────────────────────────────
-  // Dramatic rising sweep with layered noise, resonant tonal rise, and
-  // a soft sub-impact on arrival — inspired by cinematic transition SFX.
+  // ── Nerve Fiber Arc — pulse particle travel ───────────────────────────
+  // Energy arcing along a nerve fiber. Core noise whoosh with a resonant
+  // filter sweep (electrical/organic), sub-bass rumble, and a low crackle
+  // texture. No clean shimmer — raw and physical.
   const playPulseTravel = useCallback(() => {
     const pool = getPool();
     if (!pool) return;
@@ -282,98 +313,111 @@ export function useNeuralSounds() {
     if (now - lastPulseTimeRef.current < 0.4) return;
     lastPulseTimeRef.current = now;
 
-    const duration = 0.55;
+    const duration = 0.5;
 
-    // Layer 1: Swept noise whoosh
+    // Layer 1: Noise whoosh through resonant bandpass sweep
     const noiseLen = Math.floor(pool.ctx.sampleRate * duration);
     const noiseBuf = pool.ctx.createBuffer(1, noiseLen, pool.ctx.sampleRate);
     const noiseData = noiseBuf.getChannelData(0);
     for (let i = 0; i < noiseLen; i++) {
       const t = i / noiseLen;
-      const shape = Math.sin(t * Math.PI) * (1 - t * 0.3);
+      const shape = Math.sin(t * Math.PI) * (1 - t * 0.4);
       noiseData[i] = (Math.random() * 2 - 1) * shape;
     }
     const noise = pool.ctx.createBufferSource();
     noise.buffer = noiseBuf;
 
+    // Resonant sweep — tighter Q, mid-range, more electrical
     const noiseFilter = pool.ctx.createBiquadFilter();
     noiseFilter.type = "bandpass";
-    noiseFilter.frequency.setValueAtTime(300, now);
-    noiseFilter.frequency.exponentialRampToValueAtTime(3500, now + duration * 0.7);
-    noiseFilter.frequency.exponentialRampToValueAtTime(1200, now + duration);
-    noiseFilter.Q.setValueAtTime(1.5, now);
-    noiseFilter.Q.linearRampToValueAtTime(4, now + duration * 0.6);
-    noiseFilter.Q.linearRampToValueAtTime(1, now + duration);
+    noiseFilter.frequency.setValueAtTime(200, now);
+    noiseFilter.frequency.exponentialRampToValueAtTime(1800, now + duration * 0.6);
+    noiseFilter.frequency.exponentialRampToValueAtTime(600, now + duration);
+    noiseFilter.Q.setValueAtTime(3, now);
+    noiseFilter.Q.linearRampToValueAtTime(6, now + duration * 0.5);
+    noiseFilter.Q.linearRampToValueAtTime(2, now + duration);
 
     const noiseEnv = pool.ctx.createGain();
     noiseEnv.gain.setValueAtTime(0, now);
-    noiseEnv.gain.linearRampToValueAtTime(0.22, now + 0.06);
-    noiseEnv.gain.setValueAtTime(0.22, now + duration * 0.5);
+    noiseEnv.gain.linearRampToValueAtTime(0.2, now + 0.04);
+    noiseEnv.gain.setValueAtTime(0.18, now + duration * 0.45);
     noiseEnv.gain.exponentialRampToValueAtTime(0.001, now + duration);
 
     noise.connect(noiseFilter);
     noiseFilter.connect(noiseEnv);
     noiseEnv.connect(pool.masterGain);
 
-    // Layer 2: Tonal rise
-    const riseOsc = pool.ctx.createOscillator();
-    riseOsc.type = "sine";
-    riseOsc.frequency.setValueAtTime(120, now);
-    riseOsc.frequency.exponentialRampToValueAtTime(800, now + duration * 0.75);
-    riseOsc.frequency.exponentialRampToValueAtTime(400, now + duration);
+    // Layer 2: Sub-bass rumble — low sine sweep for physical weight
+    const rumble = pool.ctx.createOscillator();
+    rumble.type = "sine";
+    rumble.frequency.setValueAtTime(60, now);
+    rumble.frequency.linearRampToValueAtTime(100, now + duration * 0.4);
+    rumble.frequency.linearRampToValueAtTime(50, now + duration);
 
-    const riseEnv = pool.ctx.createGain();
-    riseEnv.gain.setValueAtTime(0, now);
-    riseEnv.gain.linearRampToValueAtTime(0.08, now + 0.05);
-    riseEnv.gain.linearRampToValueAtTime(0.12, now + duration * 0.6);
-    riseEnv.gain.exponentialRampToValueAtTime(0.001, now + duration);
+    const rumbleEnv = pool.ctx.createGain();
+    rumbleEnv.gain.setValueAtTime(0, now);
+    rumbleEnv.gain.linearRampToValueAtTime(0.15, now + 0.03);
+    rumbleEnv.gain.linearRampToValueAtTime(0.12, now + duration * 0.5);
+    rumbleEnv.gain.exponentialRampToValueAtTime(0.001, now + duration);
 
-    riseOsc.connect(riseEnv);
-    riseEnv.connect(pool.masterGain);
+    rumble.connect(rumbleEnv);
+    rumbleEnv.connect(pool.masterGain);
 
-    // Layer 3: Sub-impact on arrival
-    const impactTime = now + duration * 0.72;
-    const impactOsc = pool.ctx.createOscillator();
-    impactOsc.type = "sine";
-    impactOsc.frequency.setValueAtTime(80, impactTime);
-    impactOsc.frequency.exponentialRampToValueAtTime(40, impactTime + 0.1);
+    // Layer 3: Low crackle texture — noise through highpass, quiet
+    const crackleLen = Math.floor(pool.ctx.sampleRate * duration * 0.7);
+    const crackleBuf = pool.ctx.createBuffer(1, crackleLen, pool.ctx.sampleRate);
+    const crackleData = crackleBuf.getChannelData(0);
+    for (let i = 0; i < crackleLen; i++) {
+      const t = i / crackleLen;
+      // Sparse pops
+      crackleData[i] = Math.random() > 0.95
+        ? (Math.random() * 2 - 1) * (1 - t)
+        : (Math.random() * 2 - 1) * 0.1 * (1 - t);
+    }
+    const crackle = pool.ctx.createBufferSource();
+    crackle.buffer = crackleBuf;
+
+    const crackleFilter = pool.ctx.createBiquadFilter();
+    crackleFilter.type = "highpass";
+    crackleFilter.frequency.value = 1200;
+    crackleFilter.Q.value = 1;
+
+    const crackleEnv = pool.ctx.createGain();
+    crackleEnv.gain.setValueAtTime(0.1, now);
+    crackleEnv.gain.exponentialRampToValueAtTime(0.001, now + duration * 0.7);
+
+    crackle.connect(crackleFilter);
+    crackleFilter.connect(crackleEnv);
+    crackleEnv.connect(pool.masterGain);
+
+    // Layer 4: Sub-impact at tail end — arrival thud
+    const impactTime = now + duration * 0.7;
+    const impact = pool.ctx.createOscillator();
+    impact.type = "sine";
+    impact.frequency.setValueAtTime(70, impactTime);
+    impact.frequency.exponentialRampToValueAtTime(35, impactTime + 0.1);
 
     const impactEnv = pool.ctx.createGain();
     impactEnv.gain.setValueAtTime(0, impactTime);
-    impactEnv.gain.linearRampToValueAtTime(0.25, impactTime + 0.01);
-    impactEnv.gain.exponentialRampToValueAtTime(0.001, impactTime + 0.15);
+    impactEnv.gain.linearRampToValueAtTime(0.2, impactTime + 0.008);
+    impactEnv.gain.exponentialRampToValueAtTime(0.001, impactTime + 0.14);
 
-    impactOsc.connect(impactEnv);
+    impact.connect(impactEnv);
     impactEnv.connect(pool.masterGain);
 
-    // Layer 4: High shimmer
-    const shimmerOsc = pool.ctx.createOscillator();
-    shimmerOsc.type = "sine";
-    shimmerOsc.frequency.setValueAtTime(2200, now + 0.05);
-    shimmerOsc.frequency.exponentialRampToValueAtTime(4500, now + duration * 0.6);
-    shimmerOsc.frequency.exponentialRampToValueAtTime(1800, now + duration);
-
-    const shimmerEnv = pool.ctx.createGain();
-    shimmerEnv.gain.setValueAtTime(0, now);
-    shimmerEnv.gain.linearRampToValueAtTime(0.03, now + duration * 0.2);
-    shimmerEnv.gain.linearRampToValueAtTime(0.05, now + duration * 0.55);
-    shimmerEnv.gain.exponentialRampToValueAtTime(0.001, now + duration * 0.9);
-
-    shimmerOsc.connect(shimmerEnv);
-    shimmerEnv.connect(pool.masterGain);
-
     noise.start(now);
-    riseOsc.start(now);
-    impactOsc.start(impactTime);
-    shimmerOsc.start(now);
+    rumble.start(now);
+    crackle.start(now);
+    impact.start(impactTime);
 
     noise.stop(now + duration + 0.05);
-    riseOsc.stop(now + duration + 0.05);
-    impactOsc.stop(impactTime + 0.2);
-    shimmerOsc.stop(now + duration + 0.05);
+    rumble.stop(now + duration + 0.05);
+    crackle.stop(now + duration * 0.7 + 0.05);
+    impact.stop(impactTime + 0.18);
   }, [getPool]);
 
   // ── Brain pulse — activation phase ────────────────────────────────────
+  // Deep sub-bass throb when activation phase begins
   const playBrainPulse = useCallback(() => {
     const pool = getPool();
     if (!pool) return;
@@ -414,31 +458,116 @@ export function useNeuralSounds() {
     osc2.stop(now + 1.3);
   }, [getPool]);
 
-  // ── Cool-down shimmer ─────────────────────────────────────────────────
+  // ── Neural Fade-Out — cooldown ────────────────────────────────────────
+  // Electrical activity dissipating into silence. Descending filtered
+  // noise (highpass sweep closing down) layered with a fading low drone
+  // tail. Organic, not melodic — the brain quieting down.
   const playCooldown = useCallback(() => {
     const pool = getPool();
     if (!pool) return;
 
     const now = pool.ctx.currentTime;
+    const duration = 1.2;
 
-    for (let i = 0; i < 4; i++) {
-      const osc = pool.ctx.createOscillator();
-      osc.type = "sine";
-      const freq = 800 - i * 120;
-      const start = now + i * 0.15;
-      osc.frequency.setValueAtTime(freq, start);
-      osc.frequency.exponentialRampToValueAtTime(freq * 0.5, start + 0.6);
-
-      const env = pool.ctx.createGain();
-      env.gain.setValueAtTime(0, start);
-      env.gain.linearRampToValueAtTime(0.08, start + 0.03);
-      env.gain.exponentialRampToValueAtTime(0.001, start + 0.7);
-
-      osc.connect(env);
-      env.connect(pool.masterGain);
-      osc.start(start);
-      osc.stop(start + 0.8);
+    // Layer 1: Descending noise — highpass filter sweeps down, closing off
+    const noiseLen = Math.floor(pool.ctx.sampleRate * duration);
+    const noiseBuf = pool.ctx.createBuffer(1, noiseLen, pool.ctx.sampleRate);
+    const noiseData = noiseBuf.getChannelData(0);
+    for (let i = 0; i < noiseLen; i++) {
+      const t = i / noiseLen;
+      // Decaying amplitude with occasional small pops
+      const decay = Math.pow(1 - t, 1.5);
+      const pop = Math.random() > 0.97 ? 1.8 : 1;
+      noiseData[i] = (Math.random() * 2 - 1) * decay * pop;
     }
+    const noise = pool.ctx.createBufferSource();
+    noise.buffer = noiseBuf;
+
+    // Highpass sweep: starts open (200Hz), closes down to muffle (2000Hz)
+    const noiseFilter = pool.ctx.createBiquadFilter();
+    noiseFilter.type = "highpass";
+    noiseFilter.frequency.setValueAtTime(200, now);
+    noiseFilter.frequency.exponentialRampToValueAtTime(2000, now + duration * 0.7);
+    noiseFilter.frequency.exponentialRampToValueAtTime(4000, now + duration);
+    noiseFilter.Q.value = 1.5;
+
+    // Second lowpass to keep it from getting too harsh
+    const lpFilter = pool.ctx.createBiquadFilter();
+    lpFilter.type = "lowpass";
+    lpFilter.frequency.setValueAtTime(3000, now);
+    lpFilter.frequency.exponentialRampToValueAtTime(800, now + duration);
+    lpFilter.Q.value = 0.7;
+
+    const noiseEnv = pool.ctx.createGain();
+    noiseEnv.gain.setValueAtTime(0.18, now);
+    noiseEnv.gain.linearRampToValueAtTime(0.12, now + duration * 0.3);
+    noiseEnv.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    noise.connect(noiseFilter);
+    noiseFilter.connect(lpFilter);
+    lpFilter.connect(noiseEnv);
+    noiseEnv.connect(pool.masterGain);
+
+    // Layer 2: Fading drone tail — low sine that decays out
+    const droneTail = pool.ctx.createOscillator();
+    droneTail.type = "sine";
+    droneTail.frequency.setValueAtTime(70, now);
+    droneTail.frequency.linearRampToValueAtTime(50, now + duration);
+
+    const droneTail2 = pool.ctx.createOscillator();
+    droneTail2.type = "sine";
+    droneTail2.frequency.setValueAtTime(72, now); // slight detune
+    droneTail2.frequency.linearRampToValueAtTime(48, now + duration);
+
+    const droneEnv = pool.ctx.createGain();
+    droneEnv.gain.setValueAtTime(0.15, now);
+    droneEnv.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    const droneEnv2 = pool.ctx.createGain();
+    droneEnv2.gain.setValueAtTime(0.08, now);
+    droneEnv2.gain.exponentialRampToValueAtTime(0.001, now + duration * 0.8);
+
+    droneTail.connect(droneEnv);
+    droneTail2.connect(droneEnv2);
+    droneEnv.connect(pool.masterGain);
+    droneEnv2.connect(pool.masterGain);
+
+    // Layer 3: Final sparse crackle — last few electrical pops
+    const crackleLen = Math.floor(pool.ctx.sampleRate * duration * 0.5);
+    const crackleBuf = pool.ctx.createBuffer(1, crackleLen, pool.ctx.sampleRate);
+    const crackleData = crackleBuf.getChannelData(0);
+    for (let i = 0; i < crackleLen; i++) {
+      const t = i / crackleLen;
+      // Very sparse — only occasional pops that fade out
+      crackleData[i] = Math.random() > 0.985
+        ? (Math.random() * 2 - 1) * Math.pow(1 - t, 2)
+        : 0;
+    }
+    const crackle = pool.ctx.createBufferSource();
+    crackle.buffer = crackleBuf;
+
+    const crackleFilter2 = pool.ctx.createBiquadFilter();
+    crackleFilter2.type = "bandpass";
+    crackleFilter2.frequency.value = 1500;
+    crackleFilter2.Q.value = 2;
+
+    const crackleEnv = pool.ctx.createGain();
+    crackleEnv.gain.setValueAtTime(0.15, now + 0.1);
+    crackleEnv.gain.exponentialRampToValueAtTime(0.001, now + duration * 0.5);
+
+    crackle.connect(crackleFilter2);
+    crackleFilter2.connect(crackleEnv);
+    crackleEnv.connect(pool.masterGain);
+
+    noise.start(now);
+    droneTail.start(now);
+    droneTail2.start(now);
+    crackle.start(now + 0.1);
+
+    noise.stop(now + duration + 0.05);
+    droneTail.stop(now + duration + 0.05);
+    droneTail2.stop(now + duration + 0.05);
+    crackle.stop(now + duration * 0.5 + 0.1);
   }, [getPool]);
 
   return {
