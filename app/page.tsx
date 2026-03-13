@@ -181,14 +181,13 @@ export default function Home() {
     }
   }, [isAuthenticated, authLoading]);
 
-  // Play ElevenLabs welcome greeting 1s after boot sequence completes
+  // Play ElevenLabs welcome greeting immediately after boot sequence completes
   useEffect(() => {
     if (showBoot && bootDone) {
-      const timer = setTimeout(() => {
       fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: "Welcome to the cortex neural interface Xavier" }),
+        body: JSON.stringify({ text: "Welcome Operator to the cortex neural interface." }),
       })
         .then((res) => {
           if (!res.ok) return;
@@ -202,8 +201,6 @@ export default function Home() {
           audio.onended = () => URL.revokeObjectURL(url);
         })
         .catch(() => {});
-      }, 1000);
-      return () => clearTimeout(timer);
     }
   }, [showBoot, bootDone]);
 
