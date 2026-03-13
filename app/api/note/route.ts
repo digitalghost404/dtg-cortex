@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getNote, isSecretPath } from "@/lib/vault";
+import * as kv from "@/lib/kv";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -33,6 +34,42 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ name: note.name, content });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to read note";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { path: notePath, appendLink } = body;
+
+    if (!notePath || !appendLink) {
+      return NextResponse.json({ error: "path and appendLink required" }, { status: 400 });
+    }
+
+    if (notePath.includes("..")) {
+      return NextResponse.json({ error: "Invalid path" }, { status: 400 });
+    }
+
+    const note = await getNote(notePath);
+    if (!note) {
+      return NextResponse.json({ error: "Note not found" }, { status: 404 });
+    }
+
+    // Append wikilink
+    const newContent = note.content + `\n[[${appendLink}]]`;
+    const newRawContent = note.rawContent + `\n[[${appendLink}]]`;
+    const newOutgoing = [...note.outgoing, appendLink];
+
+    await kv.hset(`vault:note:${notePath}`, {
+      content: newContent,
+      rawContent: newRawContent,
+      outgoing: JSON.stringify(newOutgoing),
+    });
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to patch note";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

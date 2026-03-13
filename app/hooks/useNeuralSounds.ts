@@ -570,6 +570,25 @@ export function useNeuralSounds() {
     crackle.stop(now + duration * 0.5 + 0.1);
   }, [getPool]);
 
+  // Dream mode: lower master gain and detune oscillators
+  const setDreamMode = useCallback((dreaming: boolean) => {
+    const pool = poolRef.current;
+    if (!pool) return;
+    const now = pool.ctx.currentTime;
+    const targetGain = dreaming ? 0.06 : 0.15;
+    pool.masterGain.gain.cancelScheduledValues(now);
+    pool.masterGain.gain.setValueAtTime(pool.masterGain.gain.value, now);
+    pool.masterGain.gain.linearRampToValueAtTime(targetGain, now + 0.5);
+
+    // Detune active drone oscillators for eerie drift
+    if (droneRef.current) {
+      const detune = dreaming ? -200 : 0;
+      droneRef.current.osc1.detune.setValueAtTime(detune, now);
+      droneRef.current.osc2.detune.setValueAtTime(detune, now);
+      droneRef.current.shimmer.detune.setValueAtTime(detune, now);
+    }
+  }, []);
+
   return {
     ensureResumed,
     startHeartbeat,
@@ -578,5 +597,6 @@ export function useNeuralSounds() {
     playPulseTravel,
     playBrainPulse,
     playCooldown,
+    setDreamMode,
   };
 }

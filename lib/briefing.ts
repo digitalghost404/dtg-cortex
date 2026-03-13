@@ -15,6 +15,7 @@ export interface BriefingStory {
   url: string;
   snippet: string;
   source: string;
+  resonances?: Array<{ noteName: string; notePath: string; score: number }>;
 }
 
 export interface BriefingSection {

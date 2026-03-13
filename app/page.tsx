@@ -18,6 +18,8 @@ import NoteViewer from "./components/NoteViewer";
 import FileExplorer from "./components/FileExplorer";
 import { useAuth } from "./components/AuthProvider";
 import BootSequence from "./components/BootSequence";
+import SubconsciousBanner from "./components/SubconsciousBanner";
+import MemoryEcho from "./components/MemoryEcho";
 
 const GUEST_MAX_CHARS = 500;
 
@@ -227,6 +229,7 @@ export default function Home() {
       {showBoot && !bootDone && (
         <BootSequence onComplete={() => setBootDone(true)} />
       )}
+      <SubconsciousBanner />
       <AuthenticatedHome logout={logout} />
     </>
   );
@@ -825,6 +828,15 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
               </button>
 
               <Link
+                href="/dossiers"
+                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
+                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
+              >
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9670;</span>
+                DOSSIERS
+              </Link>
+
+              <Link
                 href="/memory"
                 className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
                 style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
@@ -928,6 +940,7 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
                   { href: "/clusters", icon: "\u25ce", label: "CLUSTERS" },
                   { href: "/neural",  icon: "\u2733", label: "NEURAL"   },
                   { href: "/briefing", icon: "\u25c7", label: "BRIEFING" },
+                  { href: "/dossiers", icon: "\u25c6", label: "DOSSIERS" },
                   { href: "/memory",   icon: "\u25c9", label: "MEMORY"   },
                   { href: "/settings", icon: "\u2699", label: "SETTINGS" },
                 ] as const
@@ -1129,6 +1142,7 @@ function ChatView({ sessionId, initialMessages, onSessionUpdated, onInjectInput,
   const [savedNotes, setSavedNotes] = useState<Set<string>>(new Set());
   const [pendingImages, setPendingImages] = useState<Array<{ file: File; preview: string }>>([]);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [echoMatch, setEchoMatch] = useState<{ previousQuery: string; daysAgo: number; similarity: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -1438,6 +1452,18 @@ function ChatView({ sessionId, initialMessages, onSessionUpdated, onInjectInput,
     }
 
     if (!input.trim()) return;
+    // Fire echo check in parallel (non-blocking)
+    const queryText = input;
+    fetch("/api/echo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: queryText }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.echo) setEchoMatch(data.echo);
+      })
+      .catch(() => {});
     sendMessage({ parts: [{ type: "text", text: input }] });
     setInput("");
   }
@@ -1446,6 +1472,18 @@ function ChatView({ sessionId, initialMessages, onSessionUpdated, onInjectInput,
     <>
       {/* ── Context Window — shows vault nodes being pulled during streaming ── */}
       <ContextWindow sources={streamingSources} isStreaming={isLoading} />
+
+      {/* ── Memory Echo — shown when query is similar to a past query ── */}
+      {echoMatch && (
+        <div style={{ padding: "0 1rem", marginBottom: "-0.5rem" }}>
+          <MemoryEcho
+            previousQuery={echoMatch.previousQuery}
+            daysAgo={echoMatch.daysAgo}
+            similarity={echoMatch.similarity}
+            onDismiss={() => setEchoMatch(null)}
+          />
+        </div>
+      )}
 
       {/* ── Message feed ──────────────────────────────────────────────── */}
       <main

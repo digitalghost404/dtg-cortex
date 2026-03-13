@@ -3465,3 +3465,118 @@ body {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0; }
 }
+
+/* ─── Monologue Ticker ─────────────────────────────────────────────────────── */
+
+.monologue-ticker {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 22px;
+  background: var(--bg-void);
+  border-top: 1px solid var(--border-dim);
+  overflow: hidden;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.monologue-ticker__track {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  animation: marquee-scroll 60s linear infinite;
+  white-space: nowrap;
+}
+
+.monologue-ticker__text {
+  font-family: var(--font-geist-mono, monospace);
+  font-size: 0.5rem;
+  letter-spacing: 0.12em;
+  color: var(--text-faint);
+  text-transform: lowercase;
+  opacity: 0.6;
+}
+
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+/* ─── Subconscious Banner ──────────────────────────────────────────────────── */
+
+.subconscious-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  background: rgba(34, 211, 238, 0.04);
+  border-bottom: 1px solid var(--border-dim);
+  font-family: var(--font-geist-mono, monospace);
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  animation: subconscious-fade-in 0.6s ease-out;
+  transition: opacity 0.4s ease-out;
+  flex-shrink: 0;
+  z-index: 5;
+}
+
+.subconscious-banner--fading {
+  opacity: 0;
+}
+
+.subconscious-banner__label {
+  color: var(--cyan-mid);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.subconscious-banner__whisper {
+  color: var(--text-secondary);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subconscious-banner__dismiss {
+  color: var(--text-faint);
+  font-size: 0.8rem;
+  flex-shrink: 0;
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+
+.subconscious-banner__dismiss:hover {
+  opacity: 1;
+}
+
+@keyframes subconscious-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── Resonance Pulse ──────────────────────────────────────────────────────── */
+
+@keyframes resonance-pulse {
+  0%, 100% { border-color: var(--cyan-dim); }
+  50%      { border-color: var(--cyan-bright); box-shadow: 0 0 12px rgba(34, 211, 238, 0.3); }
+}
+
+.resonance-border {
+  animation: resonance-pulse 2s ease-in-out infinite;
+  border-left-width: 3px;
+  border-left-style: solid;
+}
+
+/* ─── Dossier page text ────────────────────────────────────────────────────── */
+
+.dossier-text {
+  font-family: var(--font-geist-mono, monospace);
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin: 0;
+}

@@ -4,7 +4,7 @@
 
 Your Obsidian vault is full of ideas — but you can't grep intuition. **Cortex** is a web app that gives your vault a voice. Ask it questions, and it pulls the right notes, threads the connections, and answers with the full weight of everything you've ever written. It doesn't just search — it *understands*.
 
-**RAG-powered chat. Auto-tagging. File explorer. Voice conversations. Neural visualization. Public sharing. One vault that finally talks back.**
+**RAG-powered chat. Auto-tagging. File explorer. Voice conversations. Neural visualization. Public sharing. A vault that thinks, remembers, and dreams.**
 
 ---
 
@@ -26,6 +26,7 @@ Most note apps let you write. Cortex lets you *think*.
 | Digging through folders to find a specific note | File explorer sidebar with tree view, filter, and one-click open |
 | Can't share a note without copying the whole thing | Public share links with expiration — one click, anyone can read it |
 | Typing every query by hand | Conversational voice mode — speak, listen, repeat. Say "Hey Cortex" to wake it up |
+| Your note app doesn't know what it's doing | Cortex has a mood, tracks its own behavior, notices when your interests shift, and dreams when you're idle |
 
 ---
 
@@ -46,6 +47,7 @@ Most note apps let you write. Cortex lets you *think*.
 - **"Hey Cortex" wake phrase** — background listener activates voice input hands-free (Chrome/Edge)
 - **Slash commands** — `/summarize`, `/connections`, `/gaps`, `/explain`, `/related`, `/timeline`, `/debate`
 - **Memory** — Cortex learns your preferences, interests, and patterns from conversations and injects them into future context
+- **Memory echoes** — when you ask something similar to a past query, Cortex surfaces the echo: *"You explored this before (12 days ago)"* — with the original query and a dismiss timer
 - **Citation previews** — click any source citation to preview the full note content inline
 - **Share from chat** — share any cited source note via a public expiring link, directly from the citation row
 
@@ -58,9 +60,30 @@ Most note apps let you write. Cortex lets you *think*.
 | **Note editor** | Create new notes from the browser — folder picker (with new folder creation), tags input with real-time AI suggestions, markdown editor with live preview |
 | **Vault diagnostics** | Health indicators, orphan detection, link stats, sync status with one-click sync trigger, and a DNA-style fingerprint of your vault |
 | **Topic clusters** | 2D scatter plot of your notes grouped by semantic similarity — pan, zoom, search, and inspect |
-| **Neural Pulse** | Living neural network visualization — notes are neurons arranged by semantic similarity, with ambient breathing animations, pulse particles along synaptic connections, and RAG-driven activation via an embedded mini-chat. Procedural sound effects (Web Audio API) accompany neuron light-ups, pulse propagation, and cooldown |
+| **Neural Pulse** | Living neural network visualization — notes are neurons arranged by semantic similarity, with ambient breathing animations, pulse particles along synaptic connections, and RAG-driven activation via an embedded mini-chat. Procedural sound effects (Web Audio API) accompany neuron light-ups, pulse propagation, and cooldown. Features decay visualization (old notes fade), synaptic strengthening (frequent co-references glow brighter), phantom thread detection (unlinked similar notes shown as dashed edges), scar tissue (deleted notes linger as dim afterimages), and a dream state (idle 30s and the camera drifts autonomously through clusters with purple-shifted visuals and detuned audio) |
 | **Note lineage** | Which notes keep surfacing in your queries? Lineage tracks frequency and recency |
 | **Link discovery** | Surfaces unlinked notes that should be connected based on content overlap |
+
+### Cortex Alive
+
+Cortex isn't a static tool — it has ambient behaviors that make it feel like it has memory of its own activity, not just your data. All features below run at zero additional LLM cost (pure computation or reuse of existing calls).
+
+| Feature | Description |
+|---------|-------------|
+| **Subconscious processing** | On each visit, Cortex computes what changed in the vault since you were last here and generates a terse whisper summary — *"3 nodes modified, cluster growth detected in distributed-systems sector"* — via Claude Haiku |
+| **Phantom threads** | Cosine similarity across all note vectors detects high-similarity unlinked pairs. Shown as flickering dashed edges on Neural Pulse. Click to inspect or forge the link |
+| **Scar tissue** | When a note is deleted, Cortex creates a tombstone that lingers for 30 days — a dim, flickering afterimage on Neural Pulse placed near the note's former neighbors |
+| **Cortex mood** | A computed disposition derived from vault activity patterns — `CONTEMPLATIVE`, `RESTLESS`, `FOCUSED`, `DORMANT`, or `ABSORBING`. Shown as a small fixed-position indicator with a pulsing dot. Affects monologue tone and is displayed in the boot sequence |
+| **Cortex monologue** | Procedural inner-thought fragments generated from real vault stats — query frequency, orphan counts, phantom threads, cluster scans. Mood-aware templates shift tone based on current disposition |
+| **Vault heartbeat** | A thin ambient bar at the bottom of every page: a pulsing dot (BPM mapped to queries/hour), a 24-hour spark graph of query frequency, and scrolling monologue text. Replaces the simple ticker with a micro-visualization strip |
+| **Decay visualization** | Notes that haven't been modified in a long time visually decay on Neural Pulse — reduced opacity, smaller radius, desaturated color. Creates a freshness gradient across the graph (90-day window, purely visual) |
+| **Synaptic strengthening** | Edges between frequently co-referenced notes become visually thicker and brighter on Neural Pulse. Weight is computed from wikilinks and lineage co-occurrences, cached for 24 hours |
+| **Memory echoes** | When you ask a question semantically similar to a past query (>0.8 cosine similarity), Cortex shows a dismissible banner — *"You explored this before (12 days ago): 'previous query'"* — above the chat response |
+| **Drift detection** | Cortex tracks how your interests shift over time by comparing recent queries (7 days) against older queries (30 days). Emerging and fading topics surface in monologue fragments and subconscious whispers |
+| **Dynamic boot sequence** | The terminal-style boot animation shows real system state — actual note count, index status, phantom thread count, scar count, last sync time, current mood, and monologue template count. Falls back to canned lines if the API is unavailable |
+| **Dream state** | Idle on Neural Pulse for 30 seconds and Cortex enters a dream — autonomous camera drift via slow sinusoidal pan and zoom oscillation, cluster focus cycling every 8 seconds, a purple-shift hue overlay with pulsing vignette, detuned audio oscillators for eerie drift, and reduced edge opacity. Any mouse movement or keypress instantly wakes it |
+| **Resonance events** | Daily briefings cross-reference your vault against recent queries to surface unexpected connections |
+| **Cortex dossier** | On-demand intelligence reports that combine vault search with web research into structured, citation-backed documents |
 
 ### Auto-Tagging
 - **Bulk auto-tag CLI** — `npm run auto-tag` sends every note's content to Claude Haiku and merges suggested tags into frontmatter. Max 5 tags per note, respects existing tags, uses your vault's tag vocabulary for consistency
@@ -80,11 +103,13 @@ Most note apps let you write. Cortex lets you *think*.
 - **Sync from UI** — "Sync Now" button on the vault diagnostics page with "last synced" indicator
 
 ### Experience
-- **Boot sequence** — terminal-style login animation with system checks, progress bar, and VaultDNA logo
+- **Dynamic boot sequence** — terminal-style login animation with real vault stats (note count, index status, phantom threads, scars, mood, last sync), progress bar, and VaultDNA logo. Falls back to canned lines for guests
 - **Welcome greeting** — ElevenLabs voice greeting on login
 - **Command palette** — `Cmd+K` / `Ctrl+K` to navigate, run commands, switch sessions, or fire slash commands
 - **Personality sliders** — adjust formality, response length, challenge level, and creativity
 - **Persistent memory** — preferences, interests, facts, and patterns with a management UI
+- **Mood indicator** — always-visible disposition label with color-coded pulsing dot (top-right corner of every page)
+- **Vault heartbeat** — ambient bottom bar with live heartbeat, query spark graph, and scrolling monologue on every page
 
 ---
 
@@ -97,8 +122,8 @@ Cortex is designed to be deployed on the public internet as a personal tool.
 - **Rate limiting** — Redis-backed INCR+EXPIRE on login and setup endpoints
 - **TOTP replay prevention** — atomic set-if-not-exists prevents reuse of one-time codes
 - **CSRF protection** — origin validation on all mutating requests
-- **Guest mode** — unauthenticated visitors can chat (rate-limited via Haiku), browse tags, discover random notes, view vault diagnostics, and view shared notes (read-only, zero API cost on non-chat routes)
-- **Protected routes** — full chat, web search, TTS, sessions, memory, lineage, clusters, neural pulse, note creation, file explorer, sharing management, sync, and settings require authentication
+- **Guest mode** — unauthenticated visitors can chat (rate-limited via Haiku), browse tags, discover random notes, view vault diagnostics, and view shared notes (read-only, zero API cost on non-chat routes). Global UI elements (mood indicator, vault heartbeat, boot sequence) gracefully degrade — hidden or falling back to static content for guests
+- **Protected routes** — full chat, web search, TTS, sessions, memory, lineage, clusters, neural pulse, note creation, file explorer, sharing management, sync, dossiers, briefings, and settings require authentication
 - **Public share routes** — `/share/{token}` and `/api/share/{token}` are accessible without auth; management routes (`POST/GET/DELETE /api/share`) require auth
 - **Security headers** — CSP, HSTS, X-Frame-Options DENY, X-Content-Type-Options, Referrer-Policy, Permissions-Policy
 - **Edge-compatible token revocation** — middleware checks JWT revocation via Upstash REST API before hitting any route
@@ -135,6 +160,22 @@ Redis      Vector
         ▼
   Vercel cron (every 6h)
   → POST /api/sync
+```
+
+### Ambient computation layer
+
+Several features run as pure computation on existing data — no additional LLM calls:
+
+```
+Vault notes + Lineage queries + Vector index
+        │
+        ├── computeDecayScores()       → visual freshness gradient
+        ├── computeMood()              → disposition from activity patterns
+        ├── computeSynapticWeights()   → edge co-occurrence weights (24h cache)
+        ├── computePhantomThreads()    → unlinked similarity pairs (24h cache)
+        ├── detectDrift()              → emerging/fading topic keywords
+        ├── findEcho()                 → past query similarity matching
+        └── generateFragments()        → mood-aware + drift-aware monologue
 ```
 
 ### Dual-mode storage
@@ -260,15 +301,17 @@ npm run sync                       # sync updated tags to Redis
 
 | Route | Auth | Description |
 |-------|------|-------------|
-| `/` | Guest | Chat — guest mode (vault-backed, ephemeral, rate-limited) or full interface when authenticated |
+| `/` | Guest | Chat — guest mode (vault-backed, ephemeral, rate-limited) or full interface when authenticated. Memory echoes appear above responses for authenticated users |
 | `/vault` | Guest | Vault diagnostics, health, and sync controls |
 | `/tags` | Guest | Tag browser — explore every tag and its notes |
 | `/discover` | Guest | Random note discovery — shuffle through your vault |
 | `/share/{token}` | Guest | Public shared note viewer — read-only, expiring |
 | `/notes/new` | Required | Note editor — create new notes with folder picker, tags, and AI tag suggestions |
 | `/clusters` | Required | Semantic topic clusters — 2D scatter plot with pan, zoom, and search |
-| `/neural` | Required | Neural Pulse — living neural network visualization with chat-driven activation, pulse animations, and procedural sound effects |
+| `/neural` | Required | Neural Pulse — living neural network visualization with decay, synaptic strengthening, phantom threads, scar tissue, and dream state |
 | `/lineage` | Required | Note reference history |
+| `/briefing` | Required | Daily briefing with resonance detection |
+| `/dossiers` | Required | On-demand intelligence dossiers |
 | `/memory` | Required | Memory management |
 | `/settings` | Required | AI personality sliders and shared links management |
 | `/login` | — | Login |
@@ -277,6 +320,8 @@ npm run sync                       # sync updated tags to Redis
 Guest chat (`/api/chat/guest`) uses Claude Haiku, is limited to 500 character inputs, 500 output tokens, 10 messages/hour per IP, and 100 messages/day globally. No session or memory persistence.
 
 Guest exploration routes (vault, tags, discover, shared notes) are read-only and make zero LLM/embedding API calls.
+
+Global ambient elements (mood indicator, vault heartbeat, dynamic boot sequence) are rendered on all pages but gracefully degrade for guests — API calls fail silently and the components remain hidden or fall back to static content.
 
 ---
 
@@ -304,6 +349,10 @@ Guest exploration routes (vault, tags, discover, shared notes) are read-only and
 [Toggle conversational mode → speak your questions → hear answers → auto-relisten]
 
 [Say "Hey Cortex" → voice input activates hands-free]
+
+[Idle on Neural Pulse for 30 seconds → watch Cortex dream through your clusters]
+
+[Ask a question you asked two weeks ago → Cortex surfaces the echo]
 ```
 
 ---
@@ -316,7 +365,7 @@ Guest exploration routes (vault, tags, discover, shared notes) are read-only and
 4. Deploy — the app uses serverless functions with Edge middleware
 5. Run `npm run sync` locally (or in CI) to push vault content to Upstash
 
-The filesystem is read-only on Vercel. All state (sessions, memory, personality, auth config, lineage, shares) is stored in Upstash Redis. Vault content and embeddings are pushed via `npm run sync`. The Vercel cron job triggers `/api/sync` daily at 6 AM UTC to re-index any pending changes.
+The filesystem is read-only on Vercel. All state (sessions, memory, personality, auth config, lineage, shares, phantom threads, synaptic weights, scars, mood) is stored in Upstash Redis. Vault content and embeddings are pushed via `npm run sync`. The Vercel cron job triggers `/api/sync` daily at 6 AM UTC to re-index any pending changes.
 
 ---
 

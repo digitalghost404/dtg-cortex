@@ -326,6 +326,15 @@ function ErrorState({ message }: { message: string }) {
 // Main page
 // ---------------------------------------------------------------------------
 
+interface ScarTombstone {
+  path: string;
+  name: string;
+  folder: string;
+  tags: string[];
+  connectedNotes: string[];
+  deletedAt: string;
+}
+
 export default function VaultPage() {
   const { isAuthenticated, logout } = useAuth();
   const [stats, setStats] = useState<VaultStats | null>(null);
@@ -334,6 +343,7 @@ export default function VaultPage() {
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const [scars, setScars] = useState<ScarTombstone[]>([]);
 
   const fetchStats = useCallback(async () => {
     setLoading(true);
@@ -356,6 +366,11 @@ export default function VaultPage() {
 
   useEffect(() => {
     fetchStats();
+    // Fetch scars
+    fetch("/api/scars")
+      .then((r) => r.json())
+      .then((d) => setScars(d.scars ?? []))
+      .catch(() => {});
   }, [fetchStats]);
 
   // Fetch vault meta for lastSyncAt
@@ -860,7 +875,83 @@ export default function VaultPage() {
               </div>
             )}
 
-            {/* ── Panel 9: Link Discovery (full-width) ──────────────────────── */}
+            {/* ── Panel 9: Scar Tissue ──────────────────────────────────────── */}
+            {scars.length > 0 && (
+              <div className="vault-panel" style={{ gridColumn: "1 / -1" }}>
+                <PanelTitle>
+                  SCAR TISSUE
+                  <span
+                    style={{
+                      marginLeft: "0.5rem",
+                      fontSize: "0.6rem",
+                      color: "var(--text-muted)",
+                      fontWeight: 400,
+                    }}
+                  >
+                    ({scars.length})
+                  </span>
+                </PanelTitle>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    marginTop: "0.75rem",
+                  }}
+                >
+                  {scars.map((scar) => (
+                    <div
+                      key={scar.path}
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        justifyContent: "space-between",
+                        padding: "8px 0",
+                        borderBottom: "1px solid var(--border-dim)",
+                        gap: "1rem",
+                      }}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <span
+                          style={{
+                            fontFamily: "var(--font-geist-mono, monospace)",
+                            fontSize: "0.65rem",
+                            color: "var(--text-secondary)",
+                            opacity: 0.6,
+                          }}
+                        >
+                          {scar.name}
+                        </span>
+                        <div style={{ display: "flex", gap: "0.5rem", marginTop: "2px", flexWrap: "wrap" }}>
+                          <span style={{ fontFamily: "var(--font-geist-mono, monospace)", fontSize: "0.5rem", color: "var(--text-faint)" }}>
+                            {scar.folder}
+                          </span>
+                          {scar.connectedNotes.length > 0 && (
+                            <span style={{ fontFamily: "var(--font-geist-mono, monospace)", fontSize: "0.5rem", color: "var(--text-faint)" }}>
+                              was linked to: {scar.connectedNotes.slice(0, 3).join(", ")}
+                              {scar.connectedNotes.length > 3 ? ` +${scar.connectedNotes.length - 3}` : ""}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <span
+                        style={{
+                          fontFamily: "var(--font-geist-mono, monospace)",
+                          fontSize: "0.55rem",
+                          color: "var(--text-faint)",
+                          letterSpacing: "0.08em",
+                          flexShrink: 0,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {relativeTime(scar.deletedAt)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── Panel 10: Link Discovery (full-width) ─────────────────────── */}
             <LinkDiscovery />
 
           </div>

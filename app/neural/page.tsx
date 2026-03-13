@@ -3,12 +3,22 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useAuth } from "@/app/components/AuthProvider";
-import { useNeuralGraph, type ClustersData, type NeuronNode } from "@/app/hooks/useNeuralGraph";
+import { useNeuralGraph, type ClustersData, type NeuronNode, type ScarNode } from "@/app/hooks/useNeuralGraph";
 import { useNeuralAnimation } from "@/app/hooks/useNeuralAnimation";
 import { useNeuralChat } from "@/app/hooks/useNeuralChat";
 import { useNeuralSounds } from "@/app/hooks/useNeuralSounds";
+import { useNeuralDream } from "@/app/hooks/useNeuralDream";
 import NeuralCanvas from "@/app/components/NeuralCanvas";
 import NeuralChatInput from "@/app/components/NeuralChatInput";
+import PhantomThreadPanel from "@/app/components/PhantomThreadPanel";
+
+interface PhantomThread {
+  sourceNotePath: string;
+  sourceNoteName: string;
+  targetNotePath: string;
+  targetNoteName: string;
+  similarity: number;
+}
 
 // ---------------------------------------------------------------------------
 // Page
@@ -21,6 +31,11 @@ export default function NeuralPage() {
   const [data, setData] = useState<ClustersData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Phantom threads & scars
+  const [phantomThreads, setPhantomThreads] = useState<PhantomThread[]>([]);
+  const [scars, setScars] = useState<ScarNode[]>([]);
+  const [selectedPhantom, setSelectedPhantom] = useState<PhantomThread | null>(null);
 
   // Interaction
   const [selectedNeuron, setSelectedNeuron] = useState<NeuronNode | null>(null);
@@ -41,17 +56,46 @@ export default function NeuralPage() {
       });
   }, []);
 
+  // Fetch phantom threads and scars
+  useEffect(() => {
+    fetch("/api/phantom-threads")
+      .then((r) => r.json())
+      .then((d) => setPhantomThreads(d.threads ?? []))
+      .catch(() => {});
+    fetch("/api/scars")
+      .then((r) => r.json())
+      .then((d) => setScars(d.scars ?? []))
+      .catch(() => {});
+  }, []);
+
   // Build graph
-  const { neurons, edges, neuronsByPath, clusterColors } = useNeuralGraph(data);
+  const { neurons, edges, phantomEdges, scarNeurons, neuronsByPath, clusterColors } = useNeuralGraph(data, phantomThreads, scars);
 
   // Sound effects
   const {
     ensureResumed, playActivation, playPulseTravel, playBrainPulse, playCooldown,
-    startHeartbeat, stopHeartbeat,
+    startHeartbeat, stopHeartbeat, setDreamMode,
   } = useNeuralSounds();
 
   // Animation
   const { animStateRef, activateNeuron, tick, getPhase } = useNeuralAnimation(neurons, edges);
+
+  // Dream state
+  const clusterIds = data?.clusters.map((c) => c.id) ?? [];
+  const { isDreaming, focusClusterId, getDreamDrift } = useNeuralDream(clusterIds);
+  const dreamDriftRef = useRef({ driftX: 0, driftY: 0, driftZoom: 1 });
+
+  // Sync dream mode to sounds
+  useEffect(() => {
+    setDreamMode(isDreaming);
+  }, [isDreaming, setDreamMode]);
+
+  // Update dream drift each frame via the tick wrapper
+  const originalTick = tick;
+  const dreamTick = useCallback((now: number) => {
+    originalTick(now);
+    dreamDriftRef.current = getDreamDrift(now);
+  }, [originalTick, getDreamDrift]);
 
   // Wrap activateNeuron to also trigger sound
   const activateNeuronWithSound = useCallback(
@@ -226,11 +270,12 @@ export default function NeuralPage() {
                 fontFamily: "var(--font-geist-mono, monospace)",
                 fontSize: "0.5rem",
                 letterSpacing: "0.1em",
-                color: "var(--text-faint)",
+                color: isDreaming ? "#a78bfa" : "var(--text-faint)",
                 textTransform: "uppercase",
+                animation: isDreaming ? "dream-fade 2s ease-in-out infinite" : undefined,
               }}
             >
-              {phase}
+              {isDreaming ? "DREAMING..." : phase}
             </span>
           )}
         </div>
@@ -327,10 +372,16 @@ export default function NeuralPage() {
           <NeuralCanvas
             neurons={neurons}
             edges={edges}
+            phantomEdges={phantomEdges}
+            scarNeurons={scarNeurons}
             animStateRef={animStateRef}
-            tick={tick}
+            tick={dreamTick}
             onHover={handleHover}
             onClick={handleClick}
+            onPhantomClick={(pt) => setSelectedPhantom(pt)}
+            phantomThreads={phantomThreads}
+            isDreaming={isDreaming}
+            dreamDrift={dreamDriftRef.current}
           />
         )}
 
@@ -427,6 +478,22 @@ export default function NeuralPage() {
             </div>
           </aside>
         )}
+
+        {/* Phantom thread panel */}
+        {selectedPhantom && (
+          <PhantomThreadPanel
+            thread={selectedPhantom}
+            onClose={() => setSelectedPhantom(null)}
+            onForged={() => {
+              setSelectedPhantom(null);
+              // Refresh phantom threads
+              fetch("/api/phantom-threads")
+                .then((r) => r.json())
+                .then((d) => setPhantomThreads(d.threads ?? []))
+                .catch(() => {});
+            }}
+          />
+        )}
       </div>
 
       {/* ── Stats bar ────────────────────────────────────────────────── */}
@@ -454,6 +521,16 @@ export default function NeuralPage() {
           </span>
         </div>
       </footer>
+
+      {/* Dream animation keyframes */}
+      {isDreaming && (
+        <style>{`
+          @keyframes dream-fade {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 1; }
+          }
+        `}</style>
+      )}
 
       {/* Floating tooltip */}
       {tooltip && (

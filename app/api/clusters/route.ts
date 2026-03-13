@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { fetchAllVectors, indexHasItems } from "@/lib/vector";
+import { getAllNotes } from "@/lib/vault";
+import { computeDecayScores } from "@/lib/decay";
+import { getSynapticWeights } from "@/lib/synaptic-weights";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -13,6 +16,7 @@ interface NotePoint {
   y: number;
   cluster: number;
   connections: number;
+  decayScore?: number;
 }
 
 interface ClusterInfo {
@@ -413,6 +417,10 @@ export async function GET(): Promise<NextResponse<ClustersResponse | { error: st
     const rangeX = Math.max(maxX - minX, 1e-9);
     const rangeY = Math.max(maxY - minY, 1e-9);
 
+    // Compute decay scores from vault notes
+    const vaultNotes = await getAllNotes();
+    const decayScores = computeDecayScores(vaultNotes);
+
     const points: NotePoint[] = notes.map((note, i) => ({
       id: note.path,
       name: note.name,
@@ -421,6 +429,7 @@ export async function GET(): Promise<NextResponse<ClustersResponse | { error: st
       y: ((coords2D[i][1] - minY) / rangeY) * 2 - 1,
       cluster: clusterAssignments[i] ?? 0,
       connections: note.chunkCount,
+      decayScore: decayScores.get(note.path) ?? 0,
     }));
 
     const clusterGroups = new Map<number, string[]>();
@@ -441,7 +450,10 @@ export async function GET(): Promise<NextResponse<ClustersResponse | { error: st
     }
     clusters.sort((a, b) => a.id - b.id);
 
-    return NextResponse.json({ points, clusters });
+    // Compute synaptic weights for edge rendering
+    const synapticWeights = await getSynapticWeights().catch(() => ({}));
+
+    return NextResponse.json({ points, clusters, synapticWeights });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

@@ -12,6 +12,7 @@ import {
   saveBriefing,
   pruneBriefings,
 } from "./briefing";
+import { findResonances } from "./resonance";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -151,6 +152,25 @@ export async function generateBriefing(): Promise<Briefing | null> {
           : "Analysis unavailable."),
     };
   });
+
+  // Attach resonance events to stories
+  try {
+    const allStories = sections.flatMap((s) => s.stories);
+    const resonanceMap = await findResonances(allStories);
+
+    let storyIdx = 0;
+    for (const section of sections) {
+      for (const story of section.stories) {
+        const resonances = resonanceMap.get(storyIdx);
+        if (resonances && resonances.length > 0) {
+          story.resonances = resonances;
+        }
+        storyIdx++;
+      }
+    }
+  } catch (err) {
+    console.error("[briefing] Resonance detection failed (non-fatal):", err);
+  }
 
   const briefing: Briefing = {
     date,

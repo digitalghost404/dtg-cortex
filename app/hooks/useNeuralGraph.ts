@@ -16,12 +16,24 @@ export interface NeuronNode {
   colorR: number;
   colorG: number;
   colorB: number;
+  decayScore: number; // 0 = fresh, 1 = fully decayed (90+ days)
+  synapticWeight?: number; // edge co-occurrence weight (0-1)
 }
 
 export interface NeuralEdge {
   source: number; // index into neurons[]
   target: number;
   weight: number; // 0-1, higher = stronger visual
+  isPhantom?: boolean; // phantom thread (unlinked but similar)
+  synapticWeight?: number; // co-occurrence weight (0-1), higher = thicker/brighter
+}
+
+export interface ScarNode {
+  path: string;
+  name: string;
+  folder: string;
+  deletedAt: string;
+  connectedNotes: string[];
 }
 
 interface NotePoint {
@@ -32,6 +44,7 @@ interface NotePoint {
   y: number;
   cluster: number;
   connections: number;
+  decayScore?: number;
 }
 
 interface ClusterInfo {
@@ -44,6 +57,7 @@ interface ClusterInfo {
 export interface ClustersData {
   points: NotePoint[];
   clusters: ClusterInfo[];
+  synapticWeights?: Record<string, number>;
 }
 
 // ---------------------------------------------------------------------------
@@ -59,7 +73,19 @@ function euclidean(a: NeuronNode, b: NeuronNode): number {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-export function useNeuralGraph(data: ClustersData | null) {
+interface PhantomThread {
+  sourceNotePath: string;
+  sourceNoteName: string;
+  targetNotePath: string;
+  targetNoteName: string;
+  similarity: number;
+}
+
+export function useNeuralGraph(
+  data: ClustersData | null,
+  phantomThreads?: PhantomThread[],
+  scars?: ScarNode[],
+) {
   return useMemo(() => {
     if (!data || data.points.length === 0) {
       return {
@@ -88,6 +114,7 @@ export function useNeuralGraph(data: ClustersData | null) {
         colorR: parseInt(color.slice(1, 3), 16),
         colorG: parseInt(color.slice(3, 5), 16),
         colorB: parseInt(color.slice(5, 7), 16),
+        decayScore: pt.decayScore ?? 0,
       };
     });
 
@@ -100,11 +127,21 @@ export function useNeuralGraph(data: ClustersData | null) {
     const edges: NeuralEdge[] = [];
     const edgeSet = new Set<string>();
 
+    // Synaptic weight lookup
+    const sw = data.synapticWeights ?? {};
+    function getSynapticWeight(idxA: number, idxB: number): number {
+      const pathA = neurons[idxA]?.path;
+      const pathB = neurons[idxB]?.path;
+      if (!pathA || !pathB) return 0;
+      const key = pathA < pathB ? `${pathA}::${pathB}` : `${pathB}::${pathA}`;
+      return sw[key] ?? 0;
+    }
+
     const addEdge = (a: number, b: number, weight: number) => {
       const key = a < b ? `${a}-${b}` : `${b}-${a}`;
       if (edgeSet.has(key)) return;
       edgeSet.add(key);
-      edges.push({ source: a, target: b, weight });
+      edges.push({ source: a, target: b, weight, synapticWeight: getSynapticWeight(a, b) });
     };
 
     // Group by cluster for intra-cluster edges
@@ -146,6 +183,60 @@ export function useNeuralGraph(data: ClustersData | null) {
       }
     }
 
-    return { neurons, edges, neuronsByPath, clusterColors };
-  }, [data]);
+    // Phantom thread edges
+    const phantomEdges: NeuralEdge[] = [];
+    if (phantomThreads) {
+      for (const pt of phantomThreads) {
+        const srcIdx = neuronsByPath.get(pt.sourceNotePath);
+        const tgtIdx = neuronsByPath.get(pt.targetNotePath);
+        if (srcIdx !== undefined && tgtIdx !== undefined) {
+          phantomEdges.push({
+            source: srcIdx,
+            target: tgtIdx,
+            weight: pt.similarity * 0.3,
+            isPhantom: true,
+          });
+        }
+      }
+    }
+
+    // Scar nodes: append as additional neurons with isScar flag
+    const scarNeurons: (NeuronNode & { isScar: true })[] = [];
+    if (scars) {
+      for (const scar of scars) {
+        // Place scar near connected notes or at random position
+        let sx = (Math.random() - 0.5) * 1.6;
+        let sy = (Math.random() - 0.5) * 1.6;
+        let placed = false;
+
+        for (const connName of scar.connectedNotes) {
+          const connIdx = neurons.findIndex((n) => n.name === connName);
+          if (connIdx >= 0) {
+            sx = neurons[connIdx].x + (Math.random() - 0.5) * 0.15;
+            sy = neurons[connIdx].y + (Math.random() - 0.5) * 0.15;
+            placed = true;
+            break;
+          }
+        }
+
+        scarNeurons.push({
+          id: `scar:${scar.path}`,
+          name: scar.name,
+          path: scar.path,
+          x: sx,
+          y: sy,
+          cluster: -1,
+          connections: 0,
+          color: "#4a5568",
+          colorR: 74,
+          colorG: 85,
+          colorB: 104,
+          decayScore: 1, // scars are fully decayed
+          isScar: true,
+        });
+      }
+    }
+
+    return { neurons, edges, phantomEdges, scarNeurons, neuronsByPath, clusterColors };
+  }, [data, phantomThreads, scars]);
 }

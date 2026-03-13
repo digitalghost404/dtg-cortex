@@ -8,6 +8,7 @@ import crypto from "crypto";
 import matter from "gray-matter";
 import { Redis } from "@upstash/redis";
 import { Index } from "@upstash/vector";
+import { saveScar } from "./scars";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -255,6 +256,22 @@ export async function runSync(): Promise<SyncResult> {
   // Handle deletes
   for (const existingPath of existingPaths) {
     if (!localPaths.has(existingPath)) {
+      // Save scar tombstone before deleting
+      try {
+        const noteData = (await redis.hgetall(`vault:note:${existingPath}`)) as Record<string, string> | null;
+        if (noteData) {
+          const name = noteData.name || path.basename(existingPath, ".md");
+          const folder = noteData.folder || "(root)";
+          let tags: string[] = [];
+          let outgoing: string[] = [];
+          try { tags = JSON.parse(noteData.tags || "[]"); } catch {}
+          try { outgoing = JSON.parse(noteData.outgoing || "[]"); } catch {}
+          await saveScar({ path: existingPath, name, folder, tags, connectedNotes: outgoing });
+        }
+      } catch (scarErr) {
+        console.error(`  Failed to save scar for ${existingPath}:`, scarErr);
+      }
+
       await redis.del(`vault:note:${existingPath}`);
       await redis.del(`vault:hash:${existingPath}`);
       await redis.srem("vault:notes:index", existingPath);

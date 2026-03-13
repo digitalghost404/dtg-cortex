@@ -19,6 +19,7 @@ interface BriefingStory {
   url: string;
   snippet: string;
   source: string;
+  resonances?: Array<{ noteName: string; notePath: string; score: number }>;
 }
 
 interface BriefingSection {
@@ -70,6 +71,13 @@ function countStories(briefing: Briefing): number {
   return briefing.sections.reduce((sum, s) => sum + s.stories.length, 0);
 }
 
+function countResonances(briefing: Briefing): number {
+  return briefing.sections.reduce(
+    (sum, s) => sum + s.stories.reduce((ss, story) => ss + (story.resonances?.length ?? 0), 0),
+    0
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Section icons by topic id
 // ---------------------------------------------------------------------------
@@ -96,10 +104,14 @@ function ScanLoader() {
 }
 
 function StoryItem({ story }: { story: BriefingStory }) {
+  const hasResonance = story.resonances && story.resonances.length > 0;
+
   return (
     <div
+      className={hasResonance ? "resonance-border" : ""}
       style={{
         padding: "0.6rem 0",
+        paddingLeft: hasResonance ? "0.75rem" : undefined,
         borderBottom: "1px solid var(--border-dim)",
       }}
     >
@@ -163,6 +175,27 @@ function StoryItem({ story }: { story: BriefingStory }) {
           {story.source}
         </span>
       </div>
+      {hasResonance && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.4rem", marginTop: "0.35rem" }}>
+          {story.resonances!.map((r, i) => (
+            <span
+              key={i}
+              style={{
+                fontFamily: "var(--font-geist-mono, monospace)",
+                fontSize: "0.5rem",
+                letterSpacing: "0.08em",
+                color: "var(--cyan-bright)",
+                border: "1px solid var(--cyan-dim)",
+                borderRadius: "2px",
+                padding: "2px 8px",
+                background: "rgba(34,211,238,0.06)",
+              }}
+            >
+              RESONATES WITH: [[{r.noteName}]]
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -694,7 +727,7 @@ export default function BriefingPage() {
           }}
         >
           {briefing
-            ? `${briefing.sections.length} TOPICS \u2500\u2500\u2500 ${countStories(briefing)} STORIES \u2500\u2500\u2500 TAVILY + HAIKU`
+            ? `${briefing.sections.length} TOPICS \u2500\u2500\u2500 ${countStories(briefing)} STORIES \u2500\u2500\u2500 ${countResonances(briefing)} RESONANCES \u2500\u2500\u2500 TAVILY + HAIKU`
             : "CORTEX BRIEFING"}
         </span>
       </footer>

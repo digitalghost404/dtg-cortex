@@ -43,7 +43,8 @@ export interface AnimState {
 // Constants
 // ---------------------------------------------------------------------------
 
-const BREATHING_CYCLE = 7000; // ms
+export const BREATHING_CYCLE = 7000; // ms
+const DREAM_BREATHING_CYCLE = 12000; // slower when dreaming
 const IDLE_PULSE_INTERVAL = 3000; // ms between random dim edge pulses
 const ACTIVATION_STAGGER = 200; // ms between sequential source activations
 const ACTIVATION_RAMP = 300; // ms to ramp up

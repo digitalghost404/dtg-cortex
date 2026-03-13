@@ -10,19 +10,53 @@ interface BootLine {
   sound?: "tick" | "ok" | "done" | "boot";
 }
 
-const BOOT_LINES: BootLine[] = [
-  { text: "CORTEX NEURAL INTERFACE v2.0", delay: 0, sound: "boot" },
-  { text: "", delay: 400 },
-  { text: "AUTHENTICATING .......... OK", delay: 600, status: "ok", sound: "ok" },
-  { text: "LOADING VAULT INDEX ..... OK", delay: 1000, status: "ok", sound: "ok" },
-  { text: "INITIALIZING RAG ENGINE . OK", delay: 1400, status: "ok", sound: "ok" },
-  { text: "CONNECTING VECTOR STORE . OK", delay: 1800, status: "ok", sound: "ok" },
-  { text: "SYNCING MEMORY CONTEXT .. OK", delay: 2200, status: "ok", sound: "ok" },
-  { text: "MOUNTING KNOWLEDGE GRAPH  OK", delay: 2600, status: "ok", sound: "ok" },
-  { text: "", delay: 3000 },
-  { text: "ALL SYSTEMS NOMINAL", delay: 3300, status: "done", sound: "done" },
-  { text: "WELCOME BACK, OPERATOR.", delay: 3800, status: "done", sound: "done" },
-];
+interface BootStats {
+  noteCount: number;
+  totalWords: number;
+  indexedCount: number;
+  phantomCount: number;
+  scarCount: number;
+  lastSyncAgo: string;
+  currentMood: string;
+  moodIntensity: number;
+  fragmentCount: number;
+}
+
+function buildDynamicLines(stats: BootStats | null): BootLine[] {
+  if (!stats) {
+    // Fallback to canned lines if API fails
+    return [
+      { text: "CORTEX v2.1 — NEURAL MESH ONLINE", delay: 0, sound: "boot" },
+      { text: "", delay: 400 },
+      { text: "AUTHENTICATING .......... OK", delay: 600, status: "ok", sound: "ok" },
+      { text: "LOADING VAULT INDEX ..... OK", delay: 1000, status: "ok", sound: "ok" },
+      { text: "INITIALIZING RAG ENGINE . OK", delay: 1400, status: "ok", sound: "ok" },
+      { text: "CONNECTING VECTOR STORE . OK", delay: 1800, status: "ok", sound: "ok" },
+      { text: "SYNCING MEMORY CONTEXT .. OK", delay: 2200, status: "ok", sound: "ok" },
+      { text: "MOUNTING KNOWLEDGE GRAPH  OK", delay: 2600, status: "ok", sound: "ok" },
+      { text: "", delay: 3000 },
+      { text: "ALL SYSTEMS NOMINAL", delay: 3300, status: "done", sound: "done" },
+      { text: "WELCOME BACK, OPERATOR.", delay: 3800, status: "done", sound: "done" },
+    ];
+  }
+
+  return [
+    { text: "CORTEX v2.1 — NEURAL MESH ONLINE", delay: 0, sound: "boot" },
+    { text: "", delay: 400 },
+    { text: `scanning vault... ${stats.noteCount} nodes detected`, delay: 600, status: "ok", sound: "ok" },
+    { text: `vector index: ${stats.indexedCount}/${stats.noteCount} embedded`, delay: 1000, status: "ok", sound: "ok" },
+    { text: `phantom threads: ${stats.phantomCount} latent connections`, delay: 1400, status: "ok", sound: "ok" },
+    { text: `scar tissue: ${stats.scarCount} afterimages persisting`, delay: 1800, status: "ok", sound: "ok" },
+    { text: `last sync: ${stats.lastSyncAgo}`, delay: 2200, status: "ok", sound: "ok" },
+    { text: `mood: ${stats.currentMood} (intensity: ${stats.moodIntensity.toFixed(2)})`, delay: 2600, status: "ok", sound: "ok" },
+    { text: `monologue engine: ${stats.fragmentCount} templates loaded`, delay: 2900, status: "ok", sound: "ok" },
+    { text: "", delay: 3200 },
+    { text: "INITIALIZATION COMPLETE", delay: 3400, status: "done", sound: "done" },
+    { text: "WELCOME BACK, OPERATOR.", delay: 3800, status: "done", sound: "done" },
+  ];
+}
+
+const BOOT_LINES: BootLine[] = buildDynamicLines(null); // default fallback
 
 const TOTAL_DURATION = 5600; // ms before fade-out starts
 const FADE_DURATION = 800;  // ms for the fade-out
@@ -124,45 +158,60 @@ function playSound(ctx: AudioContext, sound: BootLine["sound"]) {
 export default function BootSequence({ onComplete }: { onComplete: () => void }) {
   const [visibleLines, setVisibleLines] = useState(0);
   const [fadeOut, setFadeOut] = useState(false);
+  const [bootLines, setBootLines] = useState<BootLine[]>(BOOT_LINES);
   const completedRef = useRef(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
-    // Lazily create AudioContext on mount (needs user gesture — login click counts)
+    // Fetch real boot stats, then start animation
     audioCtxRef.current = getAudioContext();
 
-    const timers: ReturnType<typeof setTimeout>[] = [];
+    const startAnimation = (lines: BootLine[]) => {
+      const timers: ReturnType<typeof setTimeout>[] = [];
 
-    // Reveal lines one by one with sounds
-    for (let i = 0; i < BOOT_LINES.length; i++) {
+      for (let i = 0; i < lines.length; i++) {
+        timers.push(
+          setTimeout(() => {
+            setVisibleLines(i + 1);
+            if (lines[i].sound && audioCtxRef.current) {
+              playSound(audioCtxRef.current, lines[i].sound);
+            }
+          }, lines[i].delay)
+        );
+      }
+
       timers.push(
         setTimeout(() => {
-          setVisibleLines(i + 1);
-          if (BOOT_LINES[i].sound && audioCtxRef.current) {
-            playSound(audioCtxRef.current, BOOT_LINES[i].sound);
-          }
-        }, BOOT_LINES[i].delay)
+          setFadeOut(true);
+        }, TOTAL_DURATION)
       );
-    }
 
-    // Start fade-out
-    timers.push(
-      setTimeout(() => {
-        setFadeOut(true);
-      }, TOTAL_DURATION)
-    );
+      timers.push(
+        setTimeout(() => {
+          if (!completedRef.current) {
+            completedRef.current = true;
+            onComplete();
+          }
+          audioCtxRef.current?.close().catch(() => {});
+        }, TOTAL_DURATION + FADE_DURATION)
+      );
 
-    // Complete
-    timers.push(
-      setTimeout(() => {
-        if (!completedRef.current) {
-          completedRef.current = true;
-          onComplete();
-        }
-        // Close audio context
-        audioCtxRef.current?.close().catch(() => {});
-      }, TOTAL_DURATION + FADE_DURATION)
-    );
+      return timers;
+    };
+
+    let timers: ReturnType<typeof setTimeout>[] = [];
+
+    // Try to fetch real stats, fallback to canned lines
+    fetch("/api/boot")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((stats: BootStats | null) => {
+        const lines = buildDynamicLines(stats);
+        setBootLines(lines);
+        timers = startAnimation(lines);
+      })
+      .catch(() => {
+        timers = startAnimation(BOOT_LINES);
+      });
 
     return () => {
       timers.forEach(clearTimeout);
@@ -243,7 +292,7 @@ export default function BootSequence({ onComplete }: { onComplete: () => void })
           gap: "2px",
         }}
       >
-        {BOOT_LINES.slice(0, visibleLines).map((line, i) => (
+        {bootLines.slice(0, visibleLines).map((line, i) => (
           <div
             key={i}
             style={{
@@ -283,7 +332,7 @@ export default function BootSequence({ onComplete }: { onComplete: () => void })
         ))}
 
         {/* Blinking cursor on last line */}
-        {visibleLines > 0 && visibleLines < BOOT_LINES.length && (
+        {visibleLines > 0 && visibleLines < bootLines.length && (
           <div
             style={{
               fontFamily: "var(--font-geist-mono, monospace)",
@@ -324,7 +373,7 @@ export default function BootSequence({ onComplete }: { onComplete: () => void })
               height: "100%",
               background: "linear-gradient(90deg, var(--cyan-bright, #22d3ee), var(--cyan-mid, #67e8f9))",
               boxShadow: "0 0 8px rgba(34,211,238,0.4)",
-              width: `${Math.min(100, (visibleLines / BOOT_LINES.length) * 100)}%`,
+              width: `${Math.min(100, (visibleLines / bootLines.length) * 100)}%`,
               transition: "width 0.3s ease-out",
             }}
           />

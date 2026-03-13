@@ -19,13 +19,27 @@ function nodeRadius(connections: number): number {
 // Props
 // ---------------------------------------------------------------------------
 
+interface PhantomThread {
+  sourceNotePath: string;
+  sourceNoteName: string;
+  targetNotePath: string;
+  targetNoteName: string;
+  similarity: number;
+}
+
 interface NeuralCanvasProps {
   neurons: NeuronNode[];
   edges: NeuralEdge[];
+  phantomEdges?: NeuralEdge[];
+  scarNeurons?: (NeuronNode & { isScar: true })[];
   animStateRef: React.RefObject<AnimState | null>;
   tick: (now: number) => void;
   onHover: (neuron: NeuronNode | null, x: number, y: number) => void;
   onClick: (neuron: NeuronNode | null) => void;
+  onPhantomClick?: (thread: PhantomThread) => void;
+  phantomThreads?: PhantomThread[];
+  isDreaming?: boolean;
+  dreamDrift?: { driftX: number; driftY: number; driftZoom: number };
 }
 
 // ---------------------------------------------------------------------------
@@ -35,10 +49,16 @@ interface NeuralCanvasProps {
 export default function NeuralCanvas({
   neurons,
   edges,
+  phantomEdges,
+  scarNeurons,
   animStateRef,
   tick,
   onHover,
   onClick,
+  onPhantomClick,
+  phantomThreads,
+  isDreaming,
+  dreamDrift,
 }: NeuralCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -153,10 +173,13 @@ export default function NeuralCanvas({
         return;
       }
 
-      // 2. Pan/zoom
+      // 2. Pan/zoom (with dream drift offset)
+      const driftX = isDreaming && dreamDrift ? dreamDrift.driftX : 0;
+      const driftY = isDreaming && dreamDrift ? dreamDrift.driftY : 0;
+      const driftZoom = isDreaming && dreamDrift ? dreamDrift.driftZoom : 1;
       ctx.save();
-      ctx.translate(tx, ty);
-      ctx.scale(scale, scale);
+      ctx.translate(tx + driftX, ty + driftY);
+      ctx.scale(scale * driftZoom, scale * driftZoom);
 
       // Pre-compute world positions
       const wx = new Float32Array(ns.length);
@@ -229,14 +252,83 @@ export default function NeuralCanvas({
         const srcAct = anim ? anim.activations[edge.source] : 0;
         const tgtAct = anim ? anim.activations[edge.target] : 0;
         const maxAct = Math.max(srcAct, tgtAct);
-        const alpha = 0.04 + maxAct * 0.4;
+        const synW = edge.synapticWeight ?? 0;
+        const alpha = (0.04 + maxAct * 0.4) * (0.6 + synW * 0.4);
+        const baseWidth = (0.5 + synW * 0.5);
 
         const srcN = ns[edge.source];
         ctx.beginPath();
         ctx.moveTo(sx, sy);
         ctx.lineTo(ex, ey);
         ctx.strokeStyle = `rgba(${srcN.colorR},${srcN.colorG},${srcN.colorB},${alpha})`;
-        ctx.lineWidth = 0.5 + maxAct * 1.5;
+        ctx.lineWidth = baseWidth + maxAct * 1.5;
+        ctx.stroke();
+
+        // High-weight synaptic edges get a subtle glow
+        if (synW > 0.6) {
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(ex, ey);
+          ctx.strokeStyle = `rgba(${srcN.colorR},${srcN.colorG},${srcN.colorB},${synW * 0.08})`;
+          ctx.lineWidth = baseWidth + maxAct * 1.5 + 3;
+          ctx.stroke();
+        }
+      }
+
+      // 4b. Phantom thread edges (flickering dashed)
+      const phantomEs = phantomEdges ?? [];
+      for (let pIdx = 0; pIdx < phantomEs.length; pIdx++) {
+        const edge = phantomEs[pIdx];
+        const sx = wx[edge.source];
+        const sy = wy[edge.source];
+        const ex = wx[edge.target];
+        const ey = wy[edge.target];
+
+        if (
+          (sx < vLeft && ex < vLeft) ||
+          (sx > vRight && ex > vRight) ||
+          (sy < vTop && ey < vTop) ||
+          (sy > vBottom && ey > vBottom)
+        ) continue;
+
+        const flicker = 0.08 * (0.5 + 0.5 * Math.sin(now / 400 + pIdx));
+        ctx.beginPath();
+        ctx.setLineDash([4, 6]);
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(ex, ey);
+        ctx.strokeStyle = `rgba(34,211,238,${flicker})`;
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // 4c. Scar neurons (dim flickering afterimages)
+      const scarNs = scarNeurons ?? [];
+      for (let si = 0; si < scarNs.length; si++) {
+        const scar = scarNs[si];
+        const { cx, cy } = toWorld(scar.x, scar.y, W, H);
+
+        if (cx < vLeft || cx > vRight || cy < vTop || cy > vBottom) continue;
+
+        const scarFlicker = 0.15 * (0.5 + 0.5 * Math.sin(now / 300 + si * 7.3));
+        const scarR = 5;
+
+        // Dim glow
+        const scarGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, scarR + 4);
+        scarGrad.addColorStop(0, `rgba(74,85,104,${scarFlicker})`);
+        scarGrad.addColorStop(1, `rgba(74,85,104,0)`);
+        ctx.beginPath();
+        ctx.arc(cx, cy, scarR + 4, 0, Math.PI * 2);
+        ctx.fillStyle = scarGrad;
+        ctx.fill();
+
+        // Body
+        ctx.beginPath();
+        ctx.arc(cx, cy, scarR, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(74,85,104,${scarFlicker * 0.8})`;
+        ctx.fill();
+        ctx.strokeStyle = `rgba(74,85,104,${scarFlicker * 0.5})`;
+        ctx.lineWidth = 0.5;
         ctx.stroke();
       }
 
@@ -283,7 +375,11 @@ export default function NeuralCanvas({
         const breathPhase = ((now + breathingOffset) % BREATHING_CYCLE) / BREATHING_CYCLE;
         const breathPulse = Math.sin(breathPhase * Math.PI * 2) * 0.5 + 0.5; // 0-1
 
-        const baseR = nodeRadius(n.connections);
+        const decay = n.decayScore ?? 0;
+        const decayAlphaScale = 0.3 + 0.7 * (1 - decay);
+        const decayRadiusScale = 0.6 + 0.4 * (1 - decay);
+
+        const baseR = nodeRadius(n.connections) * decayRadiusScale;
         const r = baseR + activation * 4 + breathPulse * 0.8;
         const isHov = hovered?.id === n.id;
 
@@ -316,22 +412,28 @@ export default function NeuralCanvas({
           ctx.fill();
         }
 
-        // 7. Neuron body
+        // 7. Neuron body (with decay desaturation)
         const lerpColor = (base: number, target: number, t: number) =>
           Math.round(base + (target - base) * t);
-        const actR = lerpColor(n.colorR, 255, activation * 0.6);
-        const actG = lerpColor(n.colorG, 255, activation * 0.6);
-        const actB = lerpColor(n.colorB, 255, activation * 0.6);
+        // Desaturate toward gray based on decay
+        const gray = Math.round((n.colorR + n.colorG + n.colorB) / 3);
+        const desatFactor = decay * 0.5;
+        const desatR = lerpColor(n.colorR, gray, desatFactor);
+        const desatG = lerpColor(n.colorG, gray, desatFactor);
+        const desatB = lerpColor(n.colorB, gray, desatFactor);
+        const actR = lerpColor(desatR, 255, activation * 0.6);
+        const actG = lerpColor(desatG, 255, activation * 0.6);
+        const actB = lerpColor(desatB, 255, activation * 0.6);
 
         const fillGrad = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, 0, cx, cy, r);
         if (isHov) {
           fillGrad.addColorStop(0, "#ffffff");
           fillGrad.addColorStop(1, n.color);
         } else {
-          fillGrad.addColorStop(0, `rgba(${actR},${actG},${actB},0.9)`);
+          fillGrad.addColorStop(0, `rgba(${actR},${actG},${actB},${0.9 * decayAlphaScale})`);
           fillGrad.addColorStop(
             1,
-            `rgba(${Math.round(actR * 0.4)},${Math.round(actG * 0.4)},${Math.round(actB * 0.4)},0.8)`
+            `rgba(${Math.round(actR * 0.4)},${Math.round(actG * 0.4)},${Math.round(actB * 0.4)},${0.8 * decayAlphaScale})`
           );
         }
         ctx.beginPath();
@@ -391,7 +493,38 @@ export default function NeuralCanvas({
         ctx.fillText(n.name, cx, cy + r + 4 / scale);
       }
 
+      // 9b. Scar labels (on hover / high zoom)
+      for (let si = 0; si < scarNs.length; si++) {
+        const scar = scarNs[si];
+        const { cx, cy } = toWorld(scar.x, scar.y, W, H);
+        if (cx < vLeft || cx > vRight || cy < vTop || cy > vBottom) continue;
+        if (scale <= 1.5) continue;
+        ctx.fillStyle = `rgba(74,85,104,0.5)`;
+        ctx.fillText(`DELETED: ${scar.name}`, cx, cy + 12 / scale);
+      }
+
       ctx.restore();
+
+      // Dream overlay: purple-shift hue + vignette pulse
+      if (isDreaming) {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalCompositeOperation = "screen";
+        ctx.fillStyle = "rgba(80, 30, 120, 0.03)";
+        ctx.fillRect(0, 0, canvas.width / (window.devicePixelRatio || 1), canvas.height / (window.devicePixelRatio || 1));
+        ctx.globalCompositeOperation = "source-over";
+
+        // Slow vignette pulse
+        const vignetteAlpha = 0.05 + 0.03 * Math.sin(now / 4000);
+        const vigW = canvas.width / (window.devicePixelRatio || 1);
+        const vigH = canvas.height / (window.devicePixelRatio || 1);
+        const vigGrad = ctx.createRadialGradient(vigW / 2, vigH / 2, vigW * 0.25, vigW / 2, vigH / 2, vigW * 0.6);
+        vigGrad.addColorStop(0, "rgba(0,0,0,0)");
+        vigGrad.addColorStop(1, `rgba(20, 0, 40, ${vignetteAlpha})`);
+        ctx.fillStyle = vigGrad;
+        ctx.fillRect(0, 0, vigW, vigH);
+        ctx.restore();
+      }
 
       rafRef.current = requestAnimationFrame(draw);
     };
@@ -400,7 +533,7 @@ export default function NeuralCanvas({
     return () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
-  }, [neurons.length, toWorld, tick, animStateRef]);
+  }, [neurons.length, toWorld, tick, animStateRef, phantomEdges, scarNeurons, isDreaming, dreamDrift]);
 
   // ── Resize ────────────────────────────────────────────────────────────
   useEffect(() => {
