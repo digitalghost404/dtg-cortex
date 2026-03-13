@@ -266,15 +266,30 @@ export default function BriefingPage() {
   }, []);
 
   // Fetch briefing for a specific date or latest
-  const fetchBriefing = useCallback(async (date?: string) => {
+  const fetchBriefing = useCallback(async (date?: string, retry = 0) => {
     setLoading(true);
     setError(null);
     try {
       const url = date ? `/api/briefing?date=${date}` : "/api/briefing";
       const res = await fetch(url);
       if (!res.ok) {
+        if (res.status === 404 && !date && retry < 1) {
+          // First load with no briefings — trigger generation via POST, then retry GET
+          setError("GENERATING FIRST BRIEFING — THIS MAY TAKE A MOMENT...");
+          try {
+            const postRes = await fetch("/api/briefing", { method: "POST" });
+            if (postRes.ok) {
+              return fetchBriefing(undefined, retry + 1);
+            }
+          } catch {
+            // fall through
+          }
+          setError("Briefing generation failed. Please try refreshing the page.");
+          setBriefing(null);
+          return;
+        }
         if (res.status === 404) {
-          setError("No briefings available yet. The first briefing will be generated automatically.");
+          setError("Briefing not found for this date.");
           setBriefing(null);
           return;
         }
@@ -283,6 +298,7 @@ export default function BriefingPage() {
       const data: Briefing = await res.json();
       setBriefing(data);
       setCurrentDate(data.date);
+      setError(null);
     } catch {
       setError("Failed to load briefing.");
     } finally {
