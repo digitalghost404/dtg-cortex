@@ -1,9 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getAllNotes, isSecretPath } from "@/lib/vault";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const notes = (await getAllNotes()).filter((n) => !isSecretPath(n.path));
+    const isAuthed = !!req.cookies.get("cortex-token")?.value;
+    const notes = isAuthed
+      ? await getAllNotes()
+      : (await getAllNotes()).filter((n) => !isSecretPath(n.path));
 
     // Build a map: tag -> array of { name, path, words }
     const tagMap = new Map<string, { name: string; path: string; words: number }[]>();

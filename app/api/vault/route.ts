@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getAllNotes, isSecretPath } from "@/lib/vault";
 import type { VaultNote } from "@/lib/vault";
 
@@ -155,9 +155,12 @@ function computeVaultStats(notes: VaultNote[]): VaultStats {
 // Route handler
 // ---------------------------------------------------------------------------
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const notes = (await getAllNotes()).filter((n) => !isSecretPath(n.path));
+    const isAuthed = !!req.cookies.get("cortex-token")?.value;
+    const notes = isAuthed
+      ? await getAllNotes()
+      : (await getAllNotes()).filter((n) => !isSecretPath(n.path));
     if (notes.length === 0) {
       return NextResponse.json(
         { error: "No vault notes found. Ensure VAULT_PATH is set or sync has been run." },
