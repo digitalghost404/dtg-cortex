@@ -4,7 +4,7 @@
 
 Your Obsidian vault is full of ideas — but you can't grep intuition. **Cortex** is a web app that gives your vault a voice. Ask it questions, and it pulls the right notes, threads the connections, and answers with the full weight of everything you've ever written. It doesn't just search — it *understands*.
 
-**RAG-powered chat. Auto-tagging. File explorer. Voice conversations. Public sharing. One vault that finally talks back.**
+**RAG-powered chat. Auto-tagging. File explorer. Voice conversations. Neural visualization. Public sharing. One vault that finally talks back.**
 
 ---
 
@@ -18,6 +18,7 @@ Most note apps let you write. Cortex lets you *think*.
 | Forgetting what you wrote six months ago | Every note is indexed and retrievable by meaning, not just keywords |
 | Notes that exist in isolation | Tag browser shows how ideas group and connect |
 | No idea which topics are dense and which are thin | Tag browser shows your vault's regions at a glance with note counts per tag |
+| Can't visualize how your ideas connect | Neural Pulse renders your vault as a living brain — ask a question and watch neurons light up as sources are retrieved |
 | Tagging notes by hand, inconsistently | Auto-tagger analyzes content and suggests tags using AI — bulk or real-time |
 | Never stumbling on old ideas | Discover mode serves random notes — rediscover what you forgot you knew |
 | Missing connections you should have made | Link discovery finds notes that are semantically related but not yet linked |
@@ -57,6 +58,7 @@ Most note apps let you write. Cortex lets you *think*.
 | **Note editor** | Create new notes from the browser — folder picker (with new folder creation), tags input with real-time AI suggestions, markdown editor with live preview |
 | **Vault diagnostics** | Health indicators, orphan detection, link stats, sync status with one-click sync trigger, and a DNA-style fingerprint of your vault |
 | **Topic clusters** | 2D scatter plot of your notes grouped by semantic similarity — pan, zoom, search, and inspect |
+| **Neural Pulse** | Living neural network visualization — notes are neurons arranged by semantic similarity, with ambient breathing animations, pulse particles along synaptic connections, and RAG-driven activation via an embedded mini-chat. Procedural sound effects (Web Audio API) accompany neuron light-ups, pulse propagation, and cooldown |
 | **Note lineage** | Which notes keep surfacing in your queries? Lineage tracks frequency and recency |
 | **Link discovery** | Surfaces unlinked notes that should be connected based on content overlap |
 
@@ -96,7 +98,7 @@ Cortex is designed to be deployed on the public internet as a personal tool.
 - **TOTP replay prevention** — atomic set-if-not-exists prevents reuse of one-time codes
 - **CSRF protection** — origin validation on all mutating requests
 - **Guest mode** — unauthenticated visitors can chat (rate-limited via Haiku), browse tags, discover random notes, view vault diagnostics, and view shared notes (read-only, zero API cost on non-chat routes)
-- **Protected routes** — full chat, web search, TTS, sessions, memory, lineage, clusters, note creation, file explorer, sharing management, sync, and settings require authentication
+- **Protected routes** — full chat, web search, TTS, sessions, memory, lineage, clusters, neural pulse, note creation, file explorer, sharing management, sync, and settings require authentication
 - **Public share routes** — `/share/{token}` and `/api/share/{token}` are accessible without auth; management routes (`POST/GET/DELETE /api/share`) require auth
 - **Security headers** — CSP, HSTS, X-Frame-Options DENY, X-Content-Type-Options, Referrer-Policy, Permissions-Policy
 - **Edge-compatible token revocation** — middleware checks JWT revocation via Upstash REST API before hitting any route
@@ -160,6 +162,7 @@ Mode is determined automatically by the presence of `KV_REST_API_URL`.
 | Web search | Tavily |
 | File watching | chokidar |
 | Auth | jose (JWT), bcrypt, otplib (TOTP), qrcode |
+| Visualization | Canvas 2D, Web Audio API (procedural sound synthesis) |
 | Styling | Tailwind CSS v4 |
 
 ---
@@ -264,6 +267,7 @@ npm run sync                       # sync updated tags to Redis
 | `/share/{token}` | Guest | Public shared note viewer — read-only, expiring |
 | `/notes/new` | Required | Note editor — create new notes with folder picker, tags, and AI tag suggestions |
 | `/clusters` | Required | Semantic topic clusters — 2D scatter plot with pan, zoom, and search |
+| `/neural` | Required | Neural Pulse — living neural network visualization with chat-driven activation, pulse animations, and procedural sound effects |
 | `/lineage` | Required | Note reference history |
 | `/memory` | Required | Memory management |
 | `/settings` | Required | AI personality sliders and shared links management |

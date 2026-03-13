@@ -3438,3 +3438,30 @@ body {
     overflow-y: auto;
   }
 }
+
+/* ─── Neural Pulse: scanline overlay ───────────────────────────────────────── */
+
+.neural-scanline-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+  animation: neural-scanline-scroll 8s linear infinite;
+  z-index: 5;
+}
+
+@keyframes neural-scanline-scroll {
+  from { background-position-y: 0; }
+  to   { background-position-y: 100px; }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0; }
+}

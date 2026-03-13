@@ -796,6 +796,15 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
                 CLUSTERS
               </Link>
 
+              <Link
+                href="/neural"
+                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
+                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
+              >
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9733;</span>
+                NEURAL
+              </Link>
+
               <button
                 onClick={() => setExplorerOpen((v) => !v)}
                 className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
@@ -908,6 +917,7 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
                   { href: "/notes/new", icon: "+",     label: "NEW NOTE" },
                   { href: "/lineage",  icon: "\u25c8", label: "LINEAGE"  },
                   { href: "/clusters", icon: "\u25ce", label: "CLUSTERS" },
+                  { href: "/neural",  icon: "\u2733", label: "NEURAL"   },
                   { href: "/memory",   icon: "\u25c9", label: "MEMORY"   },
                   { href: "/settings", icon: "\u2699", label: "SETTINGS" },
                 ] as const
