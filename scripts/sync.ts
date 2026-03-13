@@ -5,341 +5,81 @@
  * Reads the local Obsidian vault, computes MD5 hashes for incremental sync,
  * and pushes note content to Upstash Redis + embeddings to Upstash Vector.
  *
- * Usage: npm run sync
+ * Usage:
+ *   npm run sync          # one-time sync
+ *   npm run sync:watch    # initial sync + watch for changes
  *
  * Environment: requires VAULT_PATH, KV_REST_API_URL, KV_REST_API_TOKEN,
  *              UPSTASH_VECTOR_REST_URL, UPSTASH_VECTOR_REST_TOKEN, VOYAGE_API_KEY
  */
 
-import fs from "fs";
-import path from "path";
-import crypto from "crypto";
-import matter from "gray-matter";
-import { Redis } from "@upstash/redis";
-import { Index } from "@upstash/vector";
-
-// ---------------------------------------------------------------------------
-// Config
-// ---------------------------------------------------------------------------
+import { runSync } from "../lib/sync";
 
 const VAULT_PATH = process.env.VAULT_PATH;
-const VOYAGE_API_KEY = process.env.VOYAGE_API_KEY;
-const CHUNK_SIZE = 500;
-const CHUNK_OVERLAP = 50;
-const EMBED_BATCH_SIZE = 20;
+const watchMode = process.argv.includes("--watch");
 
 if (!VAULT_PATH) {
   console.error("VAULT_PATH is not set");
   process.exit(1);
 }
 
-if (!process.env.KV_REST_API_URL) {
-  console.error("KV_REST_API_URL is not set");
-  process.exit(1);
-}
-
-const redis = new Redis({
-  url: process.env.KV_REST_API_URL!,
-  token: process.env.KV_REST_API_TOKEN!,
-});
-
-interface VectorMetadata {
-  [key: string]: unknown;
-  path: string;
-  name: string;
-  chunk: number;
-  text: string;
-  tags: string[];
-}
-
-const vectorIndex = new Index<VectorMetadata>({
-  url: process.env.UPSTASH_VECTOR_REST_URL!,
-  token: process.env.UPSTASH_VECTOR_REST_TOKEN!,
-});
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function md5(content: string): string {
-  return crypto.createHash("md5").update(content).digest("hex");
-}
-
-function collectMarkdownFiles(dir: string): string[] {
-  const files: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name.startsWith(".")) continue;
-    const fullPath = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      files.push(...collectMarkdownFiles(fullPath));
-    } else if (entry.isFile() && entry.name.endsWith(".md")) {
-      files.push(fullPath);
-    }
-  }
-  return files;
-}
-
-function chunkText(text: string): string[] {
-  const words = text.split(/\s+/);
-  const chunks: string[] = [];
-  for (let i = 0; i < words.length; i += CHUNK_SIZE - CHUNK_OVERLAP) {
-    const chunk = words.slice(i, i + CHUNK_SIZE).join(" ");
-    if (chunk.trim().length > 0) chunks.push(chunk);
-    if (i + CHUNK_SIZE >= words.length) break;
-  }
-  return chunks;
-}
-
-function normaliseTag(raw: unknown): string {
-  const s = String(raw).trim();
-  return s.startsWith("#") ? s : `#${s}`;
-}
-
-function extractTags(data: Record<string, unknown>): string[] {
-  const raw = data.tags ?? data.tag ?? data.Topics ?? data.topics ?? null;
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw.map(normaliseTag);
-  if (typeof raw === "string") {
-    return raw.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean).map(normaliseTag);
-  }
-  return [];
-}
-
-function wikilinkTarget(raw: string): string {
-  return raw.split(/[|#]/)[0].trim();
-}
-
-function countWords(text: string): number {
-  const trimmed = text.trim();
-  if (!trimmed) return 0;
-  return trimmed.split(/\s+/).length;
-}
-
-async function embedTexts(inputs: string[]): Promise<number[][]> {
-  if (!VOYAGE_API_KEY) throw new Error("VOYAGE_API_KEY not set");
-  const res = await fetch("https://api.voyageai.com/v1/embeddings", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${VOYAGE_API_KEY}`,
-    },
-    body: JSON.stringify({ input: inputs, model: "voyage-3" }),
-  });
-  if (!res.ok) {
-    throw new Error(`Voyage AI error: ${res.status} ${await res.text()}`);
-  }
-  const json = (await res.json()) as { data: { embedding: number[] }[] };
-  return json.data.map((d) => d.embedding);
-}
-
-// ---------------------------------------------------------------------------
-// Main sync logic
-// ---------------------------------------------------------------------------
-
-async function sync() {
+async function main() {
   console.log(`Syncing vault: ${VAULT_PATH}`);
   const startTime = Date.now();
 
-  const files = collectMarkdownFiles(VAULT_PATH!);
-  console.log(`Found ${files.length} markdown files`);
-
-  // Get all currently indexed paths from Redis
-  const existingPaths = await redis.smembers("vault:notes:index") as string[];
-  const existingPathSet = new Set(existingPaths);
-
-  // Track local paths for delete detection
-  const localPaths = new Set<string>();
-  let created = 0;
-  let updated = 0;
-  let unchanged = 0;
-  let deleted = 0;
-  let totalWords = 0;
-
-  // Batch for vector upserts
-  const vectorBatch: Array<{ id: string; vector: number[]; metadata: VectorMetadata }> = [];
-
-  for (const fullPath of files) {
-    const raw = fs.readFileSync(fullPath, "utf-8");
-    const { data, content } = matter(raw);
-    const relativePath = path.relative(VAULT_PATH!, fullPath);
-    const name = path.basename(fullPath, ".md");
-    const folder = path.dirname(relativePath) === "." ? "(root)" : path.dirname(relativePath);
-    const stat = fs.statSync(fullPath);
-
-    localPaths.add(relativePath);
-
-    const hash = md5(raw);
-    const existingHash = await redis.get<string>(`vault:hash:${relativePath}`);
-
-    const words = countWords(content);
-    totalWords += words;
-
-    if (existingHash === hash) {
-      unchanged++;
-      continue;
-    }
-
-    // Extract outgoing wikilinks
-    const outgoing: string[] = [];
-    const wikiRe = /\[\[([^\]]+)\]\]/g;
-    let match: RegExpExecArray | null;
-    while ((match = wikiRe.exec(content)) !== null) {
-      outgoing.push(wikilinkTarget(match[1]));
-    }
-
-    const tags = extractTags(data as Record<string, unknown>);
-
-    // Write note to Redis hash
-    await redis.hset(`vault:note:${relativePath}`, {
-      name,
-      content,
-      rawContent: raw,
-      tags: JSON.stringify(tags),
-      outgoing: JSON.stringify(outgoing),
-      folder,
-      words: String(words),
-      modifiedAt: stat.mtime.toISOString(),
-      size: String(stat.size),
-    });
-
-    // Update hash
-    await redis.set(`vault:hash:${relativePath}`, hash);
-
-    // Add to index set
-    await redis.sadd("vault:notes:index", relativePath);
-
-    // Prepare vector chunks
-    const chunks = chunkText(content);
-    if (chunks.length > 0 && VOYAGE_API_KEY) {
-      // Delete old chunks for this file
-      try {
-        const oldResults = await vectorIndex.query<VectorMetadata>({
-          vector: new Array(1024).fill(0),
-          topK: 1000,
-          filter: `path = '${relativePath.replace(/'/g, "\\'")}'`,
-          includeMetadata: false,
-        });
-        if (oldResults.length > 0) {
-          await vectorIndex.delete(oldResults.map((r) => r.id as string));
-        }
-      } catch {
-        // Index might be empty, that's fine
-      }
-
-      // Embed in batches
-      for (let i = 0; i < chunks.length; i += EMBED_BATCH_SIZE) {
-        const batch = chunks.slice(i, i + EMBED_BATCH_SIZE);
-        const embeddings = await embedTexts(batch);
-
-        for (let j = 0; j < batch.length; j++) {
-          const chunkIdx = i + j;
-          vectorBatch.push({
-            id: `${relativePath}#chunk${chunkIdx}`,
-            vector: embeddings[j],
-            metadata: {
-              path: relativePath,
-              name,
-              chunk: chunkIdx,
-              text: batch[j],
-              tags,
-            },
-          });
-        }
-      }
-    }
-
-    if (existingPathSet.has(relativePath)) {
-      updated++;
-    } else {
-      created++;
-    }
-
-    if ((created + updated) % 25 === 0) {
-      console.log(`  Processed ${created + updated + unchanged}/${files.length}...`);
-    }
-  }
-
-  // Upsert vector batches
-  if (vectorBatch.length > 0) {
-    console.log(`Upserting ${vectorBatch.length} vectors...`);
-    const VECTOR_BATCH_SIZE = 1000;
-    for (let i = 0; i < vectorBatch.length; i += VECTOR_BATCH_SIZE) {
-      const batch = vectorBatch.slice(i, i + VECTOR_BATCH_SIZE);
-      await vectorIndex.upsert(batch);
-    }
-  }
-
-  // Handle deletes: notes in Redis but no longer on disk
-  for (const existingPath of existingPaths) {
-    if (!localPaths.has(existingPath)) {
-      await redis.del(`vault:note:${existingPath}`);
-      await redis.del(`vault:hash:${existingPath}`);
-      await redis.srem("vault:notes:index", existingPath);
-
-      // Delete vectors for this note
-      try {
-        const oldResults = await vectorIndex.query<VectorMetadata>({
-          vector: new Array(1024).fill(0),
-          topK: 1000,
-          filter: `path = '${existingPath.replace(/'/g, "\\'")}'`,
-          includeMetadata: false,
-        });
-        if (oldResults.length > 0) {
-          await vectorIndex.delete(oldResults.map((r) => r.id as string));
-        }
-      } catch {
-        // Ignore
-      }
-
-      deleted++;
-    }
-  }
-
-  // Handle pending creates: notes created from UI that need to be written to disk
-  const pendingCreates = await redis.smembers("vault:pending-creates") as string[];
-  let pendingWritten = 0;
-  for (const pendingPath of pendingCreates) {
-    const noteData = await redis.hgetall(`vault:note:${pendingPath}`) as Record<string, string> | null;
-    if (!noteData || !noteData.rawContent) continue;
-
-    const diskPath = path.join(VAULT_PATH!, pendingPath);
-    const dir = path.dirname(diskPath);
-
-    try {
-      fs.mkdirSync(dir, { recursive: true });
-      if (!fs.existsSync(diskPath)) {
-        fs.writeFileSync(diskPath, noteData.rawContent, "utf-8");
-        pendingWritten++;
-      }
-    } catch (err) {
-      console.error(`  Failed to write pending note ${pendingPath}:`, err);
-    }
-
-    await redis.srem("vault:pending-creates", pendingPath);
-  }
-
-  // Update vault metadata
-  await redis.hset("vault:meta", {
-    totalNotes: String(localPaths.size),
-    totalWords: String(totalWords),
-    lastSyncAt: new Date().toISOString(),
-  });
+  const result = await runSync();
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(`\nSync complete in ${elapsed}s:`);
-  console.log(`  Created: ${created}`);
-  console.log(`  Updated: ${updated}`);
-  console.log(`  Unchanged: ${unchanged}`);
-  console.log(`  Deleted: ${deleted}`);
-  console.log(`  Vectors upserted: ${vectorBatch.length}`);
-  if (pendingWritten > 0) {
-    console.log(`  Pending notes written to disk: ${pendingWritten}`);
+  console.log(`  Created: ${result.created}`);
+  console.log(`  Updated: ${result.updated}`);
+  console.log(`  Unchanged: ${result.unchanged}`);
+  console.log(`  Deleted: ${result.deleted}`);
+  console.log(`  Vectors upserted: ${result.vectorsUpserted}`);
+  if (result.pendingWritten > 0) {
+    console.log(`  Pending notes written to disk: ${result.pendingWritten}`);
   }
-  console.log(`  Total notes: ${localPaths.size}`);
-  console.log(`  Total words: ${totalWords.toLocaleString()}`);
+  console.log(`  Total notes: ${result.totalNotes}`);
+  console.log(`  Total words: ${result.totalWords.toLocaleString()}`);
+
+  if (watchMode) {
+    console.log(`\nStarting watch mode on ${VAULT_PATH}...`);
+    const { watch } = await import("chokidar");
+
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const watcher = watch(VAULT_PATH!, {
+      ignored: /(^|[/\\])\./,
+      persistent: true,
+      ignoreInitial: true,
+    });
+
+    function scheduleSync() {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(async () => {
+        console.log(`\n[${new Date().toISOString()}] Change detected, syncing...`);
+        try {
+          const start = Date.now();
+          const r = await runSync();
+          const ms = Date.now() - start;
+          console.log(
+            `  Sync done in ${(ms / 1000).toFixed(1)}s: +${r.created} ~${r.updated} -${r.deleted} =${r.unchanged}`
+          );
+        } catch (err) {
+          console.error("  Sync error:", err);
+        }
+      }, 1000);
+    }
+
+    watcher.on("add", scheduleSync);
+    watcher.on("change", scheduleSync);
+    watcher.on("unlink", scheduleSync);
+
+    console.log("Watching for changes... (Ctrl+C to stop)");
+  }
 }
 
-sync().catch((err) => {
+main().catch((err) => {
   console.error("Sync failed:", err);
   process.exit(1);
 });

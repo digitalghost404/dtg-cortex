@@ -57,7 +57,7 @@ async function isAuthenticated(req: NextRequest): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 // Pages that guests can view (read-only, zero API cost, no private content)
-const PUBLIC_PAGES = ["/", "/vault", "/tags", "/discover"];
+const PUBLIC_PAGES = ["/", "/vault", "/tags", "/discover", "/share"];
 
 // API routes that guests can call (metadata only, no private note content)
 const PUBLIC_API_EXACT = [
@@ -82,7 +82,10 @@ function isPublicPage(pathname: string): boolean {
 }
 
 function isPublicApi(pathname: string): boolean {
-  return PUBLIC_API_EXACT.includes(pathname);
+  if (PUBLIC_API_EXACT.includes(pathname)) return true;
+  // Public share endpoint: GET /api/share/{token}
+  if (/^\/api\/share\/[^/]+$/.test(pathname)) return true;
+  return false;
 }
 
 function isAuthRoute(pathname: string): boolean {

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useRef, useCallback, KeyboardEvent, ChangeEvent } from "react";
+import { useEffect, useState, useRef, useCallback, KeyboardEvent, ChangeEvent, useMemo } from "react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -283,6 +283,8 @@ export default function NewNotePage() {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const hasFetchedFolders = useRef(false);
+  const [suggestedTags, setSuggestedTags] = useState<string[]>([]);
+  const suggestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Fetch folders on mount ──────────────────────────────────────────────
 
@@ -304,6 +306,43 @@ export default function NewNotePage() {
 
     fetchFolders();
   }, []);
+
+  // ── Debounced tag suggestions ───────────────────────────────────────────
+
+  useEffect(() => {
+    if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current);
+
+    if (form.content.trim().length < 50) {
+      setSuggestedTags([]);
+      return;
+    }
+
+    suggestTimerRef.current = setTimeout(async () => {
+      try {
+        const existingTags = form.tags.map((t) => (t.startsWith("#") ? t : `#${t}`));
+        const res = await fetch("/api/tags/suggest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: form.content, existingTags }),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { tags: string[] };
+          // Filter out already-selected tags
+          const filtered = data.tags.filter(
+            (t) => !form.tags.includes(t.replace(/^#/, ""))
+          );
+          setSuggestedTags(filtered);
+        }
+      } catch {
+        // Silently fail — suggestions are non-critical
+      }
+    }, 1500);
+
+    return () => {
+      if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.content]);
 
   // ── Auto-grow textarea ──────────────────────────────────────────────────
 
@@ -642,6 +681,58 @@ export default function NewNotePage() {
               >
                 PRESS ENTER OR COMMA TO ADD A TAG
               </p>
+
+              {/* Suggested tags */}
+              {suggestedTags.length > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "0.3rem",
+                    marginTop: "0.5rem",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: "var(--font-geist-mono, monospace)",
+                      fontSize: "0.5rem",
+                      letterSpacing: "0.12em",
+                      color: "var(--text-faint)",
+                      alignSelf: "center",
+                      marginRight: "0.25rem",
+                    }}
+                  >
+                    SUGGESTED:
+                  </span>
+                  {suggestedTags.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => {
+                        addTag(tag.replace(/^#/, ""));
+                        setSuggestedTags((prev) => prev.filter((t) => t !== tag));
+                      }}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.2rem",
+                        background: "rgba(34,211,238,0.06)",
+                        border: "1px solid var(--border-dim)",
+                        borderRadius: "2px",
+                        padding: "2px 8px",
+                        fontFamily: "var(--font-geist-mono, monospace)",
+                        fontSize: "0.55rem",
+                        color: "var(--cyan-mid)",
+                        letterSpacing: "0.06em",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      + {tag.replace(/^#/, "")}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* ── Content ───────────────────────────────────────────────── */}

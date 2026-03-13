@@ -4,7 +4,7 @@
 
 Your Obsidian vault is full of ideas — but you can't grep intuition. **Cortex** is a web app that gives your vault a voice. Ask it questions, and it pulls the right notes, threads the connections, and answers with the full weight of everything you've ever written. It doesn't just search — it *understands*.
 
-**RAG-powered chat. Tag browser. Random discovery. Note creation. One vault that finally talks back.**
+**RAG-powered chat. Auto-tagging. File explorer. Voice conversations. Public sharing. One vault that finally talks back.**
 
 ---
 
@@ -18,9 +18,13 @@ Most note apps let you write. Cortex lets you *think*.
 | Forgetting what you wrote six months ago | Every note is indexed and retrievable by meaning, not just keywords |
 | Notes that exist in isolation | Tag browser shows how ideas group and connect |
 | No idea which topics are dense and which are thin | Tag browser shows your vault's regions at a glance with note counts per tag |
+| Tagging notes by hand, inconsistently | Auto-tagger analyzes content and suggests tags using AI — bulk or real-time |
 | Never stumbling on old ideas | Discover mode serves random notes — rediscover what you forgot you knew |
 | Missing connections you should have made | Link discovery finds notes that are semantically related but not yet linked |
 | Can only write notes in Obsidian | Create new notes from the browser — folder picker, tag input, markdown editor with live preview |
+| Digging through folders to find a specific note | File explorer sidebar with tree view, filter, and one-click open |
+| Can't share a note without copying the whole thing | Public share links with expiration — one click, anyone can read it |
+| Typing every query by hand | Conversational voice mode — speak, listen, repeat. Say "Hey Cortex" to wake it up |
 
 ---
 
@@ -37,20 +41,41 @@ Most note apps let you write. Cortex lets you *think*.
 - **Image upload** — drag-and-drop or attach images to your messages for multimodal queries
 - **Text-to-speech** — hear responses read aloud via ElevenLabs (browser fallback for guests)
 - **Voice input** — speak your questions with browser speech recognition
+- **Conversational mode** — toggle a continuous voice loop: speak → submit → response → TTS → auto-relisten
+- **"Hey Cortex" wake phrase** — background listener activates voice input hands-free (Chrome/Edge)
 - **Slash commands** — `/summarize`, `/connections`, `/gaps`, `/explain`, `/related`, `/timeline`, `/debate`
 - **Memory** — Cortex learns your preferences, interests, and patterns from conversations and injects them into future context
 - **Citation previews** — click any source citation to preview the full note content inline
+- **Share from chat** — share any cited source note via a public expiring link, directly from the citation row
 
 ### Vault Exploration
 | Feature | Description |
 |---------|-------------|
+| **File explorer** | Sidebar drawer with full folder tree, expand/collapse, filter by name or tag, note counts per folder, and one-click open in NoteViewer |
 | **Tag browser** | Browse every tag in your vault, see note counts, expand to view tagged notes — filterable and mobile-friendly |
 | **Discover** | Random note surfacing — tap shuffle to rediscover forgotten ideas with content previews, tags, and connection counts |
-| **Note editor** | Create new notes from the browser — folder picker (with new folder creation), tag input, markdown editor with live preview |
-| **Vault diagnostics** | Health indicators, orphan detection, link stats, and a DNA-style fingerprint of your vault |
+| **Note editor** | Create new notes from the browser — folder picker (with new folder creation), tag input with real-time AI suggestions, markdown editor with live preview |
+| **Vault diagnostics** | Health indicators, orphan detection, link stats, sync status with one-click sync trigger, and a DNA-style fingerprint of your vault |
 | **Topic clusters** | 2D scatter plot of your notes grouped by semantic similarity — pan, zoom, search, and inspect |
 | **Note lineage** | Which notes keep surfacing in your queries? Lineage tracks frequency and recency |
 | **Link discovery** | Surfaces unlinked notes that should be connected based on content overlap |
+
+### Auto-Tagging
+- **Bulk auto-tag CLI** — `npm run auto-tag` sends every note's content to Claude Haiku and merges suggested tags into frontmatter. Max 5 tags per note, respects existing tags, uses your vault's tag vocabulary for consistency
+- **Flags** — `--dry-run` (preview without writing), `--filter=folder/` (scope to a folder), `--model=` (override model)
+- **Real-time tag suggestions** — as you type in the note editor, Cortex embeds your content, finds similar notes in the vector index, and surfaces their tags as clickable chips
+
+### Public Sharing
+- **Expiring share links** — share any note with a public URL that expires after 1h, 24h, 3 days, 7 days, or 30 days
+- **Share from chat** — click SHARE on any citation to generate a link with an expiration picker and copy-to-clipboard
+- **Share management** — view and revoke all active share links from the settings page
+- **Minimal public page** — shared notes render with title, tags, content, and a "Shared from Cortex" footer — no auth required
+
+### Scheduled Sync
+- **Watch mode** — `npm run sync:watch` does an initial sync, then watches your vault for changes and incrementally syncs on save (1s debounce via chokidar)
+- **Sync API** — `POST /api/sync` triggers a full sync from the web UI or external cron. Accepts JWT auth or a `x-cron-secret` header
+- **Vercel cron** — automatic sync every 6 hours via `vercel.json` cron config
+- **Sync from UI** — "Sync Now" button on the vault diagnostics page with "last synced" indicator
 
 ### Experience
 - **Boot sequence** — terminal-style login animation with system checks, progress bar, and VaultDNA logo
@@ -70,8 +95,9 @@ Cortex is designed to be deployed on the public internet as a personal tool.
 - **Rate limiting** — Redis-backed INCR+EXPIRE on login and setup endpoints
 - **TOTP replay prevention** — atomic set-if-not-exists prevents reuse of one-time codes
 - **CSRF protection** — origin validation on all mutating requests
-- **Guest mode** — unauthenticated visitors can chat (rate-limited via Haiku), browse tags, discover random notes, and view vault diagnostics (read-only, zero API cost on non-chat routes)
-- **Protected routes** — full chat, web search, TTS, sessions, memory, lineage, clusters, note creation, and settings require authentication
+- **Guest mode** — unauthenticated visitors can chat (rate-limited via Haiku), browse tags, discover random notes, view vault diagnostics, and view shared notes (read-only, zero API cost on non-chat routes)
+- **Protected routes** — full chat, web search, TTS, sessions, memory, lineage, clusters, note creation, file explorer, sharing management, sync, and settings require authentication
+- **Public share routes** — `/share/{token}` and `/api/share/{token}` are accessible without auth; management routes (`POST/GET/DELETE /api/share`) require auth
 - **Security headers** — CSP, HSTS, X-Frame-Options DENY, X-Content-Type-Options, Referrer-Policy, Permissions-Policy
 - **Edge-compatible token revocation** — middleware checks JWT revocation via Upstash REST API before hitting any route
 
@@ -88,18 +114,25 @@ Local vault (.md files)
         │
         ▼
   npm run sync          ← incremental sync via MD5 hashing
+  npm run sync:watch    ← watch mode: auto-sync on file changes
+  npm run auto-tag      ← AI-powered bulk tagging via Claude Haiku
         │
    ┌────┴────┐
    ▼         ▼
 Upstash    Upstash
 Redis      Vector
 (notes,    (embeddings,
- state)     1024-dim voyage-3)
+ shares,    1024-dim voyage-3)
+ state)
    │         │
    └────┬────┘
         ▼
   Vercel serverless
   (Next.js API routes)
+        │
+        ▼
+  Vercel cron (every 6h)
+  → POST /api/sync
 ```
 
 ### Dual-mode storage
@@ -119,11 +152,13 @@ Mode is determined automatically by the presence of `KV_REST_API_URL`.
 |-------|---------|
 | Framework | Next.js 16, React 19 |
 | AI / LLM | Anthropic Claude via `@ai-sdk/anthropic` + Vercel AI SDK |
+| Auto-tagging | `@anthropic-ai/sdk` direct (Claude Haiku) |
 | Embeddings | Voyage AI (voyage-3, 1024 dimensions) |
 | Vector store | Upstash Vector |
 | KV / State | Upstash Redis |
 | TTS | ElevenLabs |
 | Web search | Tavily |
+| File watching | chokidar |
 | Auth | jose (JWT), bcrypt, otplib (TOTP), qrcode |
 | Styling | Tailwind CSS v4 |
 
@@ -165,6 +200,9 @@ ELEVENLABS_VOICE_ID=...
 
 # Optional — required for /web search
 TAVILY_API_KEY=...
+
+# Optional — required for Vercel cron sync
+CRON_SECRET=your-random-secret
 ```
 
 For **local development**, `KV_REST_API_URL` can be omitted — Cortex will use the filesystem for state. You still need `UPSTASH_VECTOR_REST_URL` and `VOYAGE_API_KEY` for embedding/search features.
@@ -192,9 +230,26 @@ Push your vault content to Upstash Redis and generate embeddings in Upstash Vect
 npm run sync
 ```
 
-The sync is **incremental** — it computes MD5 hashes per note and only re-processes changed files. Run it whenever your vault changes, or set up a cron job / CI workflow.
+The sync is **incremental** — it computes MD5 hashes per note and only re-processes changed files. Run it whenever your vault changes, or use watch mode for automatic syncing:
+
+```bash
+npm run sync:watch
+```
+
+Watch mode does an initial sync, then monitors your vault for file changes and incrementally re-syncs with a 1-second debounce.
 
 For **local development**, the app reads directly from the filesystem at `VAULT_PATH`, so syncing is only required for the Vercel deployment.
+
+### 6. Auto-tag your vault (optional)
+
+Run the bulk auto-tagger to add AI-suggested tags to all your notes:
+
+```bash
+npm run auto-tag -- --dry-run     # preview suggestions without writing
+npm run auto-tag                   # write tags to frontmatter
+npm run auto-tag -- --filter=Projects/   # scope to a folder
+npm run sync                       # sync updated tags to Redis
+```
 
 ---
 
@@ -203,20 +258,21 @@ For **local development**, the app reads directly from the filesystem at `VAULT_
 | Route | Auth | Description |
 |-------|------|-------------|
 | `/` | Guest | Chat — guest mode (vault-backed, ephemeral, rate-limited) or full interface when authenticated |
-| `/vault` | Guest | Vault diagnostics and health |
+| `/vault` | Guest | Vault diagnostics, health, and sync controls |
 | `/tags` | Guest | Tag browser — explore every tag and its notes |
 | `/discover` | Guest | Random note discovery — shuffle through your vault |
-| `/notes/new` | Required | Note editor — create new notes with folder picker and tags |
+| `/share/{token}` | Guest | Public shared note viewer — read-only, expiring |
+| `/notes/new` | Required | Note editor — create new notes with folder picker, tags, and AI tag suggestions |
 | `/clusters` | Required | Semantic topic clusters — 2D scatter plot with pan, zoom, and search |
 | `/lineage` | Required | Note reference history |
 | `/memory` | Required | Memory management |
-| `/settings` | Required | AI personality sliders |
+| `/settings` | Required | AI personality sliders and shared links management |
 | `/login` | — | Login |
 | `/setup` | — | First-run enrollment |
 
 Guest chat (`/api/chat/guest`) uses Claude Haiku, is limited to 500 character inputs, 500 output tokens, 10 messages/hour per IP, and 100 messages/day globally. No session or memory persistence.
 
-Guest exploration routes (vault, tags, discover) are read-only and make zero LLM/embedding API calls.
+Guest exploration routes (vault, tags, discover, shared notes) are read-only and make zero LLM/embedding API calls.
 
 ---
 
@@ -240,6 +296,10 @@ Guest exploration routes (vault, tags, discover) are read-only and make zero LLM
 "Create a timeline of everything related to my career transition"
 
 "What notes are related to my thesis outline that I haven't linked yet?"
+
+[Toggle conversational mode → speak your questions → hear answers → auto-relisten]
+
+[Say "Hey Cortex" → voice input activates hands-free]
 ```
 
 ---
@@ -248,11 +308,11 @@ Guest exploration routes (vault, tags, discover) are read-only and make zero LLM
 
 1. Push the repo to GitHub
 2. Import the project in Vercel
-3. Add all environment variables from `.env.local` to your Vercel project settings
+3. Add all environment variables from `.env.local` to your Vercel project settings (including `CRON_SECRET` for scheduled sync)
 4. Deploy — the app uses serverless functions with Edge middleware
 5. Run `npm run sync` locally (or in CI) to push vault content to Upstash
 
-The filesystem is read-only on Vercel. All state (sessions, memory, personality, auth config, lineage) is stored in Upstash Redis. Vault content and embeddings are pushed via `npm run sync`.
+The filesystem is read-only on Vercel. All state (sessions, memory, personality, auth config, lineage, shares) is stored in Upstash Redis. Vault content and embeddings are pushed via `npm run sync`. The Vercel cron job triggers `/api/sync` every 6 hours to re-index any pending changes.
 
 ---
 

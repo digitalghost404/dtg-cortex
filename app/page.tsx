@@ -9,10 +9,13 @@ import Link from "next/link";
 import NotePreview from "./components/NotePreview";
 import { useVoiceInput } from "./hooks/useVoiceInput";
 import { useTTS } from "./hooks/useTTS";
+import { useConversationalMode } from "./hooks/useConversationalMode";
+import { useWakePhrase } from "./hooks/useWakePhrase";
 import CommandPalette from "./components/CommandPalette";
 import VaultDNA from "./components/VaultDNA";
 import ContextWindow from "./components/ContextWindow";
 import NoteViewer from "./components/NoteViewer";
+import FileExplorer from "./components/FileExplorer";
 import { useAuth } from "./components/AuthProvider";
 import BootSequence from "./components/BootSequence";
 
@@ -393,6 +396,7 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
   const [isIndexing, setIsIndexing] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [viewerNotePath, setViewerNotePath] = useState<string | null>(null);
+  const [explorerOpen, setExplorerOpen] = useState(false);
   // Ref to the ChatView's setInput — populated by ChatView via onInjectInput
   const chatInputSetterRef = useRef<((text: string) => void) | null>(null);
 
@@ -792,6 +796,16 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
                 CLUSTERS
               </Link>
 
+              <button
+                onClick={() => setExplorerOpen((v) => !v)}
+                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
+                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
+                title="Browse vault files"
+              >
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9776;</span>
+                FILES
+              </button>
+
               <Link
                 href="/memory"
                 className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
@@ -910,6 +924,15 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
                   {label}
                 </Link>
               ))}
+              <button
+                onClick={() => { setExplorerOpen(true); setMobileMenuOpen(false); }}
+                className="btn-secondary flex items-center gap-2 text-xs px-3 py-2 rounded-sm w-full"
+                style={{ letterSpacing: "0.1em", fontSize: "0.65rem" }}
+                role="menuitem"
+              >
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9776;</span>
+                FILES
+              </button>
               <div style={{ height: 1, background: "var(--border-dim)", margin: "4px 0" }} />
               <button
                 onClick={() => { logout(); setMobileMenuOpen(false); }}
@@ -965,6 +988,16 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
           onClick={() => setSidebarOpen(false)}
         />
       )}
+
+      {/* File explorer drawer */}
+      <FileExplorer
+        open={explorerOpen}
+        onClose={() => setExplorerOpen(false)}
+        onSelectNote={(path) => {
+          setViewerNotePath(path);
+          setExplorerOpen(false);
+        }}
+      />
     </div>
     </>
   );
@@ -1115,6 +1148,12 @@ function ChatView({ sessionId, initialMessages, onSessionUpdated, onInjectInput,
   const { isSpeaking, isSupported: ttsSupported, speak, stop: stopSpeaking } = useTTS();
   const [autoSpeak, setAutoSpeak] = useState(false);
 
+  // Share modal state
+  const [shareModal, setShareModal] = useState<{ notePath: string } | null>(null);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareExpiry, setShareExpiry] = useState(72);
+  const [shareCreating, setShareCreating] = useState(false);
+
   const { messages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({
       api: "/api/chat",
@@ -1124,7 +1163,7 @@ function ChatView({ sessionId, initialMessages, onSessionUpdated, onInjectInput,
     messages: initialMessages as unknown as UIMessage[],
     onFinish: ({ message }) => {
       onSessionUpdated();
-      if (autoSpeak) {
+      if (autoSpeak || isConversationalMode) {
         const text = message.parts
           .filter(isTextUIPart)
           .map((p) => p.text)
@@ -1135,6 +1174,85 @@ function ChatView({ sessionId, initialMessages, onSessionUpdated, onInjectInput,
   });
 
   const isLoading = status === "streaming" || status === "submitted";
+
+  // Conversational mode
+  const { isConversationalMode, toggleConversationalMode } = useConversationalMode({
+    isSpeaking,
+    isListening,
+    isLoading,
+    startListening,
+    speak,
+  });
+
+  // Wake phrase detection
+  const [wakeEnabled, setWakeEnabled] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem("cortex-wake-phrase") === "true";
+  });
+
+  const { isWakeActive, startWakeDetection, stopWakeDetection } = useWakePhrase(
+    useCallback(() => {
+      // On wake, start listening or toggle conversational mode
+      if (!isListening && !isSpeaking && !isLoading) {
+        startListening();
+        setAutoSpeak(true);
+      }
+    }, [isListening, isSpeaking, isLoading, startListening])
+  );
+
+  // Toggle wake phrase and persist
+  const toggleWakePhrase = useCallback(() => {
+    setWakeEnabled((prev) => {
+      const next = !prev;
+      localStorage.setItem("cortex-wake-phrase", String(next));
+      if (next) startWakeDetection();
+      else stopWakeDetection();
+      return next;
+    });
+  }, [startWakeDetection, stopWakeDetection]);
+
+  // Start wake detection if enabled
+  useEffect(() => {
+    if (wakeEnabled && !isWakeActive && !isListening && !isSpeaking) {
+      startWakeDetection();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wakeEnabled]);
+
+  // Restart wake detection after voice input ends
+  useEffect(() => {
+    if (wakeEnabled && !isListening && !isSpeaking && !isLoading && !isWakeActive) {
+      const timer = setTimeout(() => startWakeDetection(), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [wakeEnabled, isListening, isSpeaking, isLoading, isWakeActive, startWakeDetection]);
+
+  // Share helper
+  async function handleShare(notePath: string) {
+    setShareModal({ notePath });
+    setShareUrl(null);
+    setShareExpiry(72);
+  }
+
+  async function createShareLink() {
+    if (!shareModal) return;
+    setShareCreating(true);
+    try {
+      const res = await fetch("/api/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notePath: shareModal.notePath, expiresIn: shareExpiry }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { url: string };
+        setShareUrl(window.location.origin + data.url);
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setShareCreating(false);
+    }
+  }
 
   // Extract source-url parts from the streaming assistant message so the
   // ContextWindow can show which vault nodes are being pulled in real-time.
@@ -1518,7 +1636,22 @@ function ChatView({ sessionId, initialMessages, onSessionUpdated, onInjectInput,
                       </button>
                     )}
 
-                    {sources.length > 0 && <CitationRow sources={sources} onCitationClick={onCitationClick} />}
+                    {sources.length > 0 && (
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                        <CitationRow sources={sources} onCitationClick={onCitationClick} />
+                        {sources.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => handleShare(sources[0].path)}
+                            className="btn-save-note"
+                            title="Share this source note"
+                            style={{ fontSize: "0.5rem" }}
+                          >
+                            SHARE
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -1787,6 +1920,48 @@ function ChatView({ sessionId, initialMessages, onSessionUpdated, onInjectInput,
               </button>
             )}
 
+            {/* Conversational mode toggle */}
+            {voiceSupported && ttsSupported && (
+              <button
+                type="button"
+                onClick={toggleConversationalMode}
+                className={`hidden sm:flex px-3 py-3 rounded-sm text-xs font-bold flex-shrink-0${isConversationalMode ? " btn-auto-speak--on" : " btn-auto-speak"}`}
+                title={isConversationalMode ? "Conversational mode ON — click to disable" : "Enable conversational mode (auto listen/speak loop)"}
+                style={isConversationalMode ? {
+                  animation: "pulse 2s ease-in-out infinite",
+                } : undefined}
+              >
+                {isConversationalMode ? "CONV ON" : "CONV"}
+              </button>
+            )}
+
+            {/* Wake phrase toggle */}
+            {voiceSupported && (
+              <button
+                type="button"
+                onClick={toggleWakePhrase}
+                className={`hidden sm:flex px-3 py-3 rounded-sm text-xs font-bold flex-shrink-0${wakeEnabled ? " btn-auto-speak--on" : " btn-auto-speak"}`}
+                title={wakeEnabled ? "Wake phrase active — say 'Hey Cortex'" : "Enable 'Hey Cortex' wake phrase"}
+                style={{ position: "relative" }}
+              >
+                WAKE
+                {isWakeActive && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: 3,
+                      right: 3,
+                      width: 5,
+                      height: 5,
+                      borderRadius: "50%",
+                      background: "var(--cyan-bright)",
+                      boxShadow: "0 0 4px var(--cyan-bright)",
+                    }}
+                  />
+                )}
+              </button>
+            )}
+
             {/* Image attach button */}
             <button
               type="button"
@@ -1806,6 +1981,21 @@ function ChatView({ sessionId, initialMessages, onSessionUpdated, onInjectInput,
               {isSearchMode ? "SCAN" : "SEND"}
             </button>
           </form>
+
+          {/* Conversational mode indicator */}
+          {isConversationalMode && (
+            <p style={{
+              fontFamily: "var(--font-geist-mono, monospace)",
+              fontSize: "0.55rem",
+              letterSpacing: "0.14em",
+              color: "var(--cyan-mid)",
+              marginTop: "0.3rem",
+              textAlign: "center",
+              animation: "pulse 2s ease-in-out infinite",
+            }}>
+              CONVERSATIONAL MODE ACTIVE
+            </p>
+          )}
 
           {/* Live voice transcript */}
           {isListening && liveTranscript && (
@@ -1827,6 +2017,178 @@ function ChatView({ sessionId, initialMessages, onSessionUpdated, onInjectInput,
           </p>
         </div>
       </div>
+
+      {/* ── Share modal ─────────────────────────────────────────────────── */}
+      {shareModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 100,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "1rem",
+          }}
+          onClick={() => setShareModal(null)}
+        >
+          <div
+            className="vault-panel"
+            style={{
+              maxWidth: "420px",
+              width: "100%",
+              padding: "1.5rem",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3
+              style={{
+                fontFamily: "var(--font-geist-mono, monospace)",
+                fontSize: "0.65rem",
+                letterSpacing: "0.18em",
+                color: "var(--cyan-bright)",
+                margin: "0 0 1rem",
+              }}
+            >
+              SHARE NOTE
+            </h3>
+            <p
+              style={{
+                fontFamily: "var(--font-geist-mono, monospace)",
+                fontSize: "0.6rem",
+                color: "var(--text-secondary)",
+                margin: "0 0 1rem",
+                wordBreak: "break-all",
+              }}
+            >
+              {shareModal.notePath}
+            </p>
+
+            {!shareUrl ? (
+              <>
+                <div style={{ marginBottom: "1rem" }}>
+                  <label
+                    style={{
+                      fontFamily: "var(--font-geist-mono, monospace)",
+                      fontSize: "0.55rem",
+                      letterSpacing: "0.12em",
+                      color: "var(--text-muted)",
+                      display: "block",
+                      marginBottom: "0.3rem",
+                    }}
+                  >
+                    EXPIRES IN
+                  </label>
+                  <select
+                    value={shareExpiry}
+                    onChange={(e) => setShareExpiry(Number(e.target.value))}
+                    style={{
+                      background: "var(--bg-surface)",
+                      border: "1px solid var(--border-dim)",
+                      borderRadius: "2px",
+                      color: "var(--text-primary)",
+                      fontFamily: "var(--font-geist-mono, monospace)",
+                      fontSize: "0.7rem",
+                      padding: "0.4rem 0.6rem",
+                    }}
+                  >
+                    <option value={1}>1 hour</option>
+                    <option value={24}>24 hours</option>
+                    <option value={72}>3 days</option>
+                    <option value={168}>7 days</option>
+                    <option value={720}>30 days</option>
+                  </select>
+                </div>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <button
+                    onClick={createShareLink}
+                    disabled={shareCreating}
+                    className="btn-boot"
+                    style={{
+                      fontSize: "0.6rem",
+                      letterSpacing: "0.15em",
+                      padding: "0.4rem 1rem",
+                      borderRadius: "2px",
+                    }}
+                  >
+                    {shareCreating ? "CREATING..." : "CREATE LINK"}
+                  </button>
+                  <button
+                    onClick={() => setShareModal(null)}
+                    className="btn-secondary"
+                    style={{
+                      fontSize: "0.6rem",
+                      letterSpacing: "0.12em",
+                      padding: "0.4rem 1rem",
+                      borderRadius: "2px",
+                    }}
+                  >
+                    CANCEL
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div
+                  style={{
+                    background: "var(--bg-surface)",
+                    border: "1px solid var(--border-mid)",
+                    borderRadius: "2px",
+                    padding: "0.6rem",
+                    marginBottom: "0.75rem",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                  }}
+                >
+                  <input
+                    readOnly
+                    value={shareUrl}
+                    style={{
+                      flex: 1,
+                      background: "none",
+                      border: "none",
+                      color: "var(--cyan-bright)",
+                      fontFamily: "var(--font-geist-mono, monospace)",
+                      fontSize: "0.6rem",
+                      outline: "none",
+                    }}
+                    onFocus={(e) => e.currentTarget.select()}
+                  />
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(shareUrl);
+                    }}
+                    className="btn-secondary"
+                    style={{
+                      fontSize: "0.55rem",
+                      letterSpacing: "0.1em",
+                      padding: "2px 8px",
+                      borderRadius: "2px",
+                      flexShrink: 0,
+                    }}
+                  >
+                    COPY
+                  </button>
+                </div>
+                <button
+                  onClick={() => setShareModal(null)}
+                  className="btn-secondary"
+                  style={{
+                    fontSize: "0.6rem",
+                    letterSpacing: "0.12em",
+                    padding: "0.4rem 1rem",
+                    borderRadius: "2px",
+                  }}
+                >
+                  DONE
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }

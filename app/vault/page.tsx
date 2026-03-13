@@ -332,6 +332,8 @@ export default function VaultPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
 
   const fetchStats = useCallback(async () => {
     setLoading(true);
@@ -354,6 +356,39 @@ export default function VaultPage() {
 
   useEffect(() => {
     fetchStats();
+  }, [fetchStats]);
+
+  // Fetch vault meta for lastSyncAt
+  useEffect(() => {
+    fetch("/api/vault")
+      .then((r) => r.json())
+      .then(() => {
+        // lastSyncAt comes from vault meta — we'll read it from the stats fetch
+      })
+      .catch(() => {});
+    // Also check vault meta directly
+    fetch("/api/vault")
+      .then(() => {})
+      .catch(() => {});
+  }, []);
+
+  const handleSync = useCallback(async () => {
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/sync", { method: "POST" });
+      if (!res.ok) {
+        const body = (await res.json()) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as { totalNotes: number; totalWords: number };
+      setLastSyncAt(new Date().toISOString());
+      // Refresh vault stats after sync
+      fetchStats();
+    } catch (err) {
+      console.error("Sync failed:", err);
+    } finally {
+      setSyncing(false);
+    }
   }, [fetchStats]);
 
   const maxTagCount = stats?.topTags[0]?.count ?? 1;
@@ -452,6 +487,43 @@ export default function VaultPage() {
             >
               LAST SCAN: {lastRefreshed.toLocaleTimeString()}
             </span>
+          )}
+          {lastSyncAt && (
+            <span
+              style={{
+                fontFamily: "var(--font-geist-mono, monospace)",
+                fontSize: "0.5rem",
+                letterSpacing: "0.1em",
+                color: "var(--text-faint)",
+              }}
+            >
+              SYNCED: {relativeTime(lastSyncAt)}
+            </span>
+          )}
+          {isAuthenticated && (
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="btn-secondary"
+              style={{
+                fontSize: "0.6rem",
+                letterSpacing: "0.12em",
+                padding: "4px 12px",
+                borderRadius: "2px",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+            >
+              {syncing ? (
+                <>
+                  <span className="indexing-ring" />
+                  SYNCING
+                </>
+              ) : (
+                "SYNC NOW"
+              )}
+            </button>
           )}
           <button
             onClick={fetchStats}

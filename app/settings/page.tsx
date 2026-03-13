@@ -10,6 +10,13 @@ interface PersonalitySettings {
   creativity: number;
 }
 
+interface ShareEntry {
+  token: string;
+  notePath: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
 const DEFAULT_PERSONALITY: PersonalitySettings = {
   formality: 50,
   length: 50,
@@ -112,6 +119,11 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Shared links state
+  const [shares, setShares] = useState<ShareEntry[]>([]);
+  const [sharesLoading, setSharesLoading] = useState(true);
+  const [revokingToken, setRevokingToken] = useState<string | null>(null);
+
   // Load current settings on mount
   useEffect(() => {
     fetch("/api/personality")
@@ -123,6 +135,44 @@ export default function SettingsPage() {
       .catch(() => {
         setLoading(false);
       });
+  }, []);
+
+  // Load shared links
+  const fetchShares = useCallback(async () => {
+    setSharesLoading(true);
+    try {
+      const res = await fetch("/api/share");
+      if (res.ok) {
+        const data = (await res.json()) as { shares: ShareEntry[] };
+        setShares(data.shares);
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setSharesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchShares();
+  }, [fetchShares]);
+
+  const handleRevoke = useCallback(async (token: string) => {
+    setRevokingToken(token);
+    try {
+      const res = await fetch("/api/share", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      if (res.ok) {
+        setShares((prev) => prev.filter((s) => s.token !== token));
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setRevokingToken(null);
+    }
   }, []);
 
   const handleSliderChange = useCallback(
@@ -429,6 +479,106 @@ export default function SettingsPage() {
                 >
                   ERROR: {error}
                 </span>
+              )}
+            </div>
+
+            {/* ── Shared Links panel ───────────────────────────────────────── */}
+            <div className="vault-panel">
+              <h2 className="vault-panel__title" style={{ marginBottom: "1rem" }}>
+                SHARED LINKS
+              </h2>
+
+              {sharesLoading ? (
+                <p
+                  style={{
+                    fontFamily: "var(--font-geist-mono, monospace)",
+                    fontSize: "0.6rem",
+                    color: "var(--text-faint)",
+                    letterSpacing: "0.1em",
+                  }}
+                >
+                  LOADING...
+                </p>
+              ) : shares.length === 0 ? (
+                <p
+                  style={{
+                    fontFamily: "var(--font-geist-mono, monospace)",
+                    fontSize: "0.6rem",
+                    color: "var(--text-faint)",
+                    letterSpacing: "0.1em",
+                  }}
+                >
+                  NO ACTIVE SHARE LINKS
+                </p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+                  {shares.map((share) => {
+                    const isExpired = new Date(share.expiresAt) < new Date();
+                    return (
+                      <div
+                        key={share.token}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "0.75rem",
+                          padding: "0.5rem 0.6rem",
+                          background: "var(--bg-surface)",
+                          border: "1px solid var(--border-dim)",
+                          borderRadius: "2px",
+                          opacity: isExpired ? 0.5 : 1,
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p
+                            style={{
+                              fontFamily: "var(--font-geist-mono, monospace)",
+                              fontSize: "0.6rem",
+                              color: "var(--text-secondary)",
+                              margin: 0,
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {share.notePath}
+                          </p>
+                          <p
+                            style={{
+                              fontFamily: "var(--font-geist-mono, monospace)",
+                              fontSize: "0.5rem",
+                              color: "var(--text-faint)",
+                              margin: "2px 0 0",
+                              letterSpacing: "0.08em",
+                            }}
+                          >
+                            {isExpired
+                              ? "EXPIRED"
+                              : `EXPIRES: ${new Date(share.expiresAt).toLocaleDateString()}`}
+                            {" "}&#8226; /share/{share.token}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleRevoke(share.token)}
+                          disabled={revokingToken === share.token}
+                          className="btn-secondary"
+                          style={{
+                            fontSize: "0.55rem",
+                            letterSpacing: "0.12em",
+                            padding: "3px 10px",
+                            borderRadius: "2px",
+                            flexShrink: 0,
+                            cursor: revokingToken === share.token ? "not-allowed" : "pointer",
+                            color: "#f87171",
+                            borderColor: "rgba(248,113,113,0.3)",
+                          }}
+                        >
+                          {revokingToken === share.token ? "..." : "REVOKE"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           </>

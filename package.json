@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "sync": "npx tsx scripts/sync.ts"
+    "sync": "npx tsx scripts/sync.ts",
+    "sync:watch": "npx tsx scripts/sync.ts --watch",
+    "auto-tag": "npx tsx scripts/auto-tag.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.58",

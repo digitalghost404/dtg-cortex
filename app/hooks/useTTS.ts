@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+export interface UseTTSOptions {
+  onSpeechEnd?: () => void;
+}
+
 export interface UseTTSReturn {
   isSpeaking: boolean;
   isSupported: boolean; // always true — we use server-side ElevenLabs
@@ -54,10 +58,12 @@ function cleanForSpeech(raw: string): string {
   return t.trim();
 }
 
-export function useTTS(): UseTTSReturn {
+export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const onSpeechEndRef = useRef(options.onSpeechEnd);
+  onSpeechEndRef.current = options.onSpeechEnd;
 
   const stop = useCallback(() => {
     // Abort in-flight fetch
@@ -121,6 +127,7 @@ export function useTTS(): UseTTSReturn {
             if (audioRef.current === audio) {
               audioRef.current = null;
               setIsSpeaking(false);
+              onSpeechEndRef.current?.();
             }
           };
 
@@ -167,7 +174,10 @@ export function useTTS(): UseTTSReturn {
       voices.find((v) => v.lang.startsWith("en")) ??
       null;
     if (preferred) utterance.voice = preferred;
-    utterance.onend = () => setIsSpeaking(false);
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      onSpeechEndRef.current?.();
+    };
     utterance.onerror = (ev) => {
       // "interrupted" fires when we call cancel() — not a real error
       if (ev.error !== "interrupted") setIsSpeaking(false);
