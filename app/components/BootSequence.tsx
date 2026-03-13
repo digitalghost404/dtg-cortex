@@ -11,20 +11,20 @@ interface BootLine {
 
 const BOOT_LINES: BootLine[] = [
   { text: "CORTEX NEURAL INTERFACE v2.0", delay: 0 },
-  { text: "", delay: 200 },
-  { text: "AUTHENTICATING .......... OK", delay: 300, status: "ok" },
-  { text: "LOADING VAULT INDEX ..... OK", delay: 500, status: "ok" },
-  { text: "INITIALIZING RAG ENGINE . OK", delay: 700, status: "ok" },
-  { text: "CONNECTING VECTOR STORE . OK", delay: 900, status: "ok" },
-  { text: "SYNCING MEMORY CONTEXT .. OK", delay: 1100, status: "ok" },
-  { text: "MOUNTING KNOWLEDGE GRAPH  OK", delay: 1300, status: "ok" },
-  { text: "", delay: 1500 },
-  { text: "ALL SYSTEMS NOMINAL", delay: 1600, status: "done" },
-  { text: "WELCOME BACK, OPERATOR.", delay: 1900, status: "done" },
+  { text: "", delay: 400 },
+  { text: "AUTHENTICATING .......... OK", delay: 600, status: "ok" },
+  { text: "LOADING VAULT INDEX ..... OK", delay: 1000, status: "ok" },
+  { text: "INITIALIZING RAG ENGINE . OK", delay: 1400, status: "ok" },
+  { text: "CONNECTING VECTOR STORE . OK", delay: 1800, status: "ok" },
+  { text: "SYNCING MEMORY CONTEXT .. OK", delay: 2200, status: "ok" },
+  { text: "MOUNTING KNOWLEDGE GRAPH  OK", delay: 2600, status: "ok" },
+  { text: "", delay: 3000 },
+  { text: "ALL SYSTEMS NOMINAL", delay: 3300, status: "done" },
+  { text: "WELCOME BACK, OPERATOR.", delay: 3800, status: "done" },
 ];
 
-const TOTAL_DURATION = 2800; // ms before fade-out starts
-const FADE_DURATION = 600;  // ms for the fade-out
+const TOTAL_DURATION = 5600; // ms before fade-out starts
+const FADE_DURATION = 800;  // ms for the fade-out
 
 export default function BootSequence({ onComplete }: { onComplete: () => void }) {
   const [visibleLines, setVisibleLines] = useState(0);
@@ -75,7 +75,7 @@ export default function BootSequence({ onComplete }: { onComplete: () => void })
         alignItems: "center",
         justifyContent: "center",
         opacity: fadeOut ? 0 : 1,
-        transition: `opacity ${FADE_DURATION}ms ease-out`,
+        transition: `opacity 800ms ease-out`,
         pointerEvents: fadeOut ? "none" : "auto",
       }}
     >
