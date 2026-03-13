@@ -800,133 +800,66 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
               <span>READY</span>
             </div>
 
-            {/* Desktop nav links */}
-            <nav className="hidden sm:flex items-center gap-3" aria-label="Main navigation">
-              <Link
-                href="/vault"
-                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-              >
-                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9707;</span>
-                VAULT
+            {/* Desktop nav links — grouped by function */}
+            <nav className="hidden sm:flex items-center gap-1.5" aria-label="Main navigation">
+              {/* ── Vault / Knowledge ── */}
+              <Link href="/vault" className="btn-secondary flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-sm" style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}>
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9707;</span>VAULT
               </Link>
-
-              <Link
-                href="/tags"
-                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-              >
-                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9734;</span>
-                TAGS
+              <Link href="/tags" className="btn-secondary flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-sm" style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}>
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9734;</span>TAGS
               </Link>
-
-              <Link
-                href="/discover"
-                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-              >
-                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#10048;</span>
-                DISCOVER
-              </Link>
-
-              <Link
-                href="/notes/new"
-                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-              >
-                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>+</span>
-                NEW NOTE
-              </Link>
-
-              <Link
-                href="/lineage"
-                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-              >
-                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9672;</span>
-                LINEAGE
-              </Link>
-
-              <Link
-                href="/clusters"
-                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-              >
-                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9678;</span>
-                CLUSTERS
-              </Link>
-
-              <Link
-                href="/neural"
-                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-              >
-                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9733;</span>
-                NEURAL
-              </Link>
-
-              <Link
-                href="/briefing"
-                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-              >
-                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9671;</span>
-                BRIEFING
-              </Link>
-
-              <button
-                onClick={() => setExplorerOpen((v) => !v)}
-                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-                title="Browse vault files"
-              >
-                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9776;</span>
-                FILES
+              <button onClick={() => setExplorerOpen((v) => !v)} className="btn-secondary flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-sm" style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }} title="Browse vault files">
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9776;</span>FILES
               </button>
-
-              <Link
-                href="/dossiers"
-                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-              >
-                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9670;</span>
-                DOSSIERS
+              <Link href="/notes/new" className="btn-secondary flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-sm" style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}>
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>+</span>NEW
               </Link>
 
-              <Link
-                href="/memory"
-                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-              >
-                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9673;</span>
-                MEMORY
+              <span style={{ color: "var(--border-dim)", fontSize: "0.7rem", padding: "0 2px" }}>&#124;</span>
+
+              {/* ── Visualizations ── */}
+              <Link href="/clusters" className="btn-secondary flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-sm" style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}>
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9678;</span>CLUSTERS
+              </Link>
+              <Link href="/neural" className="btn-secondary flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-sm" style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}>
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9733;</span>NEURAL
+              </Link>
+              <Link href="/discover" className="btn-secondary flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-sm" style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}>
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#10048;</span>DISCOVER
               </Link>
 
-              <Link
-                href="/journal"
-                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-              >
-                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9998;</span>
-                JOURNAL
+              <span style={{ color: "var(--border-dim)", fontSize: "0.7rem", padding: "0 2px" }}>&#124;</span>
+
+              {/* ── Intelligence ── */}
+              <Link href="/briefing" className="btn-secondary flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-sm" style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}>
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9671;</span>BRIEFING
+              </Link>
+              <Link href="/dossiers" className="btn-secondary flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-sm" style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}>
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9670;</span>DOSSIERS
+              </Link>
+              <Link href="/lineage" className="btn-secondary flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-sm" style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}>
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9672;</span>LINEAGE
               </Link>
 
-              <Link
-                href="/settings"
-                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-              >
-                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9881;</span>
-                SETTINGS
+              <span style={{ color: "var(--border-dim)", fontSize: "0.7rem", padding: "0 2px" }}>&#124;</span>
+
+              {/* ── Inner Life ── */}
+              <Link href="/memory" className="btn-secondary flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-sm" style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}>
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9673;</span>MEMORY
+              </Link>
+              <Link href="/journal" className="btn-secondary flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-sm" style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}>
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9998;</span>JOURNAL
               </Link>
 
-              <button
-                onClick={logout}
-                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-              >
-                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9211;</span>
-                LOGOUT
+              <span style={{ color: "var(--border-dim)", fontSize: "0.7rem", padding: "0 2px" }}>&#124;</span>
+
+              {/* ── System ── */}
+              <Link href="/settings" className="btn-secondary flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-sm" style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}>
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9881;</span>SETTINGS
+              </Link>
+              <button onClick={logout} className="btn-secondary flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-sm" style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}>
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9211;</span>LOGOUT
               </button>
             </nav>
 
@@ -995,44 +928,57 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
                   )}
                 </button>
               )}
-              <div style={{ height: 1, background: "var(--border-dim)", margin: "4px 0" }} />
-              {(
-                [
-                  { href: "/vault",    icon: "\u25c7", label: "VAULT"    },
-                  { href: "/tags",     icon: "\u2606", label: "TAGS"     },
-                  { href: "/discover", icon: "\u2740", label: "DISCOVER" },
-                  { href: "/notes/new", icon: "+",     label: "NEW NOTE" },
-                  { href: "/lineage",  icon: "\u25c8", label: "LINEAGE"  },
-                  { href: "/clusters", icon: "\u25ce", label: "CLUSTERS" },
-                  { href: "/neural",  icon: "\u2733", label: "NEURAL"   },
-                  { href: "/briefing", icon: "\u25c7", label: "BRIEFING" },
-                  { href: "/dossiers", icon: "\u25c6", label: "DOSSIERS" },
-                  { href: "/memory",   icon: "\u25c9", label: "MEMORY"   },
-                  { href: "/journal",  icon: "\u270e", label: "JOURNAL"  },
-                  { href: "/settings", icon: "\u2699", label: "SETTINGS" },
-                ] as const
-              ).map(({ href, icon, label }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  className="btn-secondary flex items-center gap-2 text-xs px-3 py-2 rounded-sm"
-                  style={{ letterSpacing: "0.1em", fontSize: "0.65rem" }}
-                  role="menuitem"
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>{icon}</span>
-                  {label}
+              {/* ── Vault / Knowledge ── */}
+              <div style={{ fontSize: "0.5rem", letterSpacing: "0.2em", color: "var(--text-faint)", padding: "6px 3px 2px", opacity: 0.6 }}>VAULT</div>
+              {([
+                { href: "/vault",     icon: "\u25c7", label: "BROWSE"   },
+                { href: "/tags",      icon: "\u2606", label: "TAGS"     },
+                { href: "/notes/new", icon: "+",      label: "NEW NOTE" },
+              ] as const).map(({ href, icon, label }) => (
+                <Link key={href} href={href} className="btn-secondary flex items-center gap-2 text-xs px-3 py-2 rounded-sm" style={{ letterSpacing: "0.1em", fontSize: "0.65rem" }} role="menuitem" onClick={() => setMobileMenuOpen(false)}>
+                  <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>{icon}</span>{label}
                 </Link>
               ))}
-              <button
-                onClick={() => { setExplorerOpen(true); setMobileMenuOpen(false); }}
-                className="btn-secondary flex items-center gap-2 text-xs px-3 py-2 rounded-sm w-full"
-                style={{ letterSpacing: "0.1em", fontSize: "0.65rem" }}
-                role="menuitem"
-              >
-                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9776;</span>
-                FILES
+              <button onClick={() => { setExplorerOpen(true); setMobileMenuOpen(false); }} className="btn-secondary flex items-center gap-2 text-xs px-3 py-2 rounded-sm w-full" style={{ letterSpacing: "0.1em", fontSize: "0.65rem" }} role="menuitem">
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9776;</span>FILES
               </button>
+
+              {/* ── Visualizations ── */}
+              <div style={{ fontSize: "0.5rem", letterSpacing: "0.2em", color: "var(--text-faint)", padding: "6px 3px 2px", opacity: 0.6, borderTop: "1px solid var(--border-dim)", marginTop: 4 }}>VISUALIZE</div>
+              {([
+                { href: "/clusters", icon: "\u25ce", label: "CLUSTERS" },
+                { href: "/neural",   icon: "\u2733", label: "NEURAL"   },
+                { href: "/discover", icon: "\u2740", label: "DISCOVER" },
+              ] as const).map(({ href, icon, label }) => (
+                <Link key={href} href={href} className="btn-secondary flex items-center gap-2 text-xs px-3 py-2 rounded-sm" style={{ letterSpacing: "0.1em", fontSize: "0.65rem" }} role="menuitem" onClick={() => setMobileMenuOpen(false)}>
+                  <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>{icon}</span>{label}
+                </Link>
+              ))}
+
+              {/* ── Intelligence ── */}
+              <div style={{ fontSize: "0.5rem", letterSpacing: "0.2em", color: "var(--text-faint)", padding: "6px 3px 2px", opacity: 0.6, borderTop: "1px solid var(--border-dim)", marginTop: 4 }}>INTEL</div>
+              {([
+                { href: "/briefing", icon: "\u25c7", label: "BRIEFING" },
+                { href: "/dossiers", icon: "\u25c6", label: "DOSSIERS" },
+                { href: "/lineage",  icon: "\u25c8", label: "LINEAGE"  },
+              ] as const).map(({ href, icon, label }) => (
+                <Link key={href} href={href} className="btn-secondary flex items-center gap-2 text-xs px-3 py-2 rounded-sm" style={{ letterSpacing: "0.1em", fontSize: "0.65rem" }} role="menuitem" onClick={() => setMobileMenuOpen(false)}>
+                  <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>{icon}</span>{label}
+                </Link>
+              ))}
+
+              {/* ── Inner Life ── */}
+              <div style={{ fontSize: "0.5rem", letterSpacing: "0.2em", color: "var(--text-faint)", padding: "6px 3px 2px", opacity: 0.6, borderTop: "1px solid var(--border-dim)", marginTop: 4 }}>INNER LIFE</div>
+              {([
+                { href: "/memory",  icon: "\u25c9", label: "MEMORY"  },
+                { href: "/journal", icon: "\u270e", label: "JOURNAL" },
+              ] as const).map(({ href, icon, label }) => (
+                <Link key={href} href={href} className="btn-secondary flex items-center gap-2 text-xs px-3 py-2 rounded-sm" style={{ letterSpacing: "0.1em", fontSize: "0.65rem" }} role="menuitem" onClick={() => setMobileMenuOpen(false)}>
+                  <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>{icon}</span>{label}
+                </Link>
+              ))}
+
+              {/* ── System ── */}
               <div style={{ height: 1, background: "var(--border-dim)", margin: "4px 0" }} />
               <button
                 onClick={() => { logout(); setMobileMenuOpen(false); }}
