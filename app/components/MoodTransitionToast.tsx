@@ -39,7 +39,7 @@ export default function MoodTransitionToast({ from, to, reason }: MoodTransition
         position: "fixed",
         top: 36,
         right: 10,
-        zIndex: 55,
+        zIndex: 5,
         padding: "6px 12px",
         borderRadius: "2px",
         background: "rgba(2, 4, 8, 0.85)",
