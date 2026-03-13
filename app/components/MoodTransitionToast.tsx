@@ -37,9 +37,9 @@ export default function MoodTransitionToast({ from, to, reason }: MoodTransition
     <div
       style={{
         position: "fixed",
-        top: 36,
+        top: 78,
         right: 10,
-        zIndex: 5,
+        zIndex: 2,
         padding: "6px 12px",
         borderRadius: "2px",
         background: "rgba(2, 4, 8, 0.85)",

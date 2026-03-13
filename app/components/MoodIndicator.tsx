@@ -60,9 +60,9 @@ export default function MoodIndicator() {
       <div
         style={{
           position: "fixed",
-          top: 10,
+          top: 56,
           right: 10,
-          zIndex: 5,
+          zIndex: 2,
           display: "flex",
           alignItems: "center",
           gap: "6px",

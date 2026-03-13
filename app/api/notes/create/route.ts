@@ -141,7 +141,26 @@ export async function POST(req: NextRequest) {
     });
 
     await kv.sadd("vault:notes:index", relativePath);
-    await kv.sadd("vault:pending-creates", relativePath);
+
+    // Also write to filesystem if VAULT_PATH is available (hybrid mode)
+    const hybridVaultPath = getVaultPath();
+    if (hybridVaultPath) {
+      try {
+        const noteDir = path.join(hybridVaultPath, folder);
+        const filePath = path.join(noteDir, filename);
+        const resolvedVault = path.resolve(hybridVaultPath);
+        const resolvedFile = path.resolve(filePath);
+        if (resolvedFile.startsWith(resolvedVault)) {
+          await fs.mkdir(noteDir, { recursive: true });
+          await fs.writeFile(filePath, noteContent, "utf-8");
+        }
+      } catch {
+        // Filesystem write failed but KV succeeded — note is still available
+        await kv.sadd("vault:pending-creates", relativePath);
+      }
+    } else {
+      await kv.sadd("vault:pending-creates", relativePath);
+    }
 
     return NextResponse.json({ success: true, path: relativePath }, { status: 201 });
   }
