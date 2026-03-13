@@ -56,6 +56,7 @@ export default function LoginPage() {
         setPassword("");
         setTotpToken("");
       } else {
+        sessionStorage.setItem("cortex-boot", "1");
         await refresh();
         router.replace("/");
       }

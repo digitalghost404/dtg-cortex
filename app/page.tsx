@@ -14,6 +14,7 @@ import VaultDNA from "./components/VaultDNA";
 import ContextWindow from "./components/ContextWindow";
 import NoteViewer from "./components/NoteViewer";
 import { useAuth } from "./components/AuthProvider";
+import BootSequence from "./components/BootSequence";
 
 const GUEST_MAX_CHARS = 500;
 
@@ -165,6 +166,20 @@ function CitationRow({ sources, onCitationClick }: CitationRowProps) {
 
 export default function Home() {
   const { isAuthenticated, isLoading: authLoading, logout } = useAuth();
+  const [showBoot, setShowBoot] = useState(false);
+  const [bootDone, setBootDone] = useState(false);
+
+  useEffect(() => {
+    if (isAuthenticated && !authLoading) {
+      const flag = sessionStorage.getItem("cortex-boot");
+      if (flag === "1") {
+        sessionStorage.removeItem("cortex-boot");
+        setShowBoot(true);
+      } else {
+        setBootDone(true);
+      }
+    }
+  }, [isAuthenticated, authLoading]);
 
   if (authLoading) {
     return (
@@ -181,7 +196,14 @@ export default function Home() {
     return <GuestHome />;
   }
 
-  return <AuthenticatedHome logout={logout} />;
+  return (
+    <>
+      {showBoot && !bootDone && (
+        <BootSequence onComplete={() => setBootDone(true)} />
+      )}
+      <AuthenticatedHome logout={logout} />
+    </>
+  );
 }
 
 // ---------------------------------------------------------------------------
