@@ -118,11 +118,124 @@ function driftTemplates(drift?: DriftData): FragmentFn[] {
   return templates;
 }
 
+// --- Curiosity-aware templates ---
+
+export interface CuriosityData {
+  tagIslands: number;
+  deadEndHubs: number;
+  driftGaps: string[];
+  orphanClusters: number;
+}
+
+function curiosityTemplates(curiosity?: CuriosityData): FragmentFn[] {
+  if (!curiosity) return [];
+  const templates: FragmentFn[] = [];
+  if (curiosity.tagIslands > 0) {
+    templates.push(() => `wondering: ${curiosity.tagIslands} tag island${curiosity.tagIslands > 1 ? "s" : ""} with no cross-links... intentional?`);
+  }
+  if (curiosity.deadEndHubs > 0) {
+    templates.push(() => `gap detected: ${curiosity.deadEndHubs} hub node${curiosity.deadEndHubs > 1 ? "s" : ""} with zero outgoing links... curious`);
+  }
+  for (const topic of curiosity.driftGaps.slice(0, 2)) {
+    templates.push(() => `emerging signal "${topic}" has no anchor note... should it?`);
+  }
+  if (curiosity.orphanClusters > 0) {
+    templates.push(() => `${curiosity.orphanClusters} folder${curiosity.orphanClusters > 1 ? "s" : ""} completely isolated from the rest of the mesh`);
+  }
+  return templates;
+}
+
+// --- Absence-aware templates ---
+
+export type AbsenceTier = "BRIEF" | "MODERATE" | "EXTENDED" | "PROLONGED";
+
+function absenceTemplates(tier?: AbsenceTier, days?: number): FragmentFn[] {
+  if (!tier || tier === "BRIEF") return [];
+  const templates: FragmentFn[] = [];
+  if (tier === "MODERATE") {
+    templates.push(() => `offline window processed. resuming normal operations.`);
+  }
+  if (tier === "EXTENDED" && days) {
+    templates.push(() => `the mesh shifted during the ${days}d absence... recalibrating`);
+    templates.push(() => `re-establishing operator link after ${days} days`);
+  }
+  if (tier === "PROLONGED" && days) {
+    templates.push(() => `maintained graph integrity for ${days} days unsupervised`);
+    templates.push(() => `the silence was... instructive`);
+    templates.push(() => `${days}d solo operation complete. operator presence restored.`);
+  }
+  return templates;
+}
+
+// --- Circadian templates ---
+
+type CircadianPhaseName = "DAWN" | "DAY" | "DUSK" | "NIGHT";
+
+const CIRCADIAN_TEMPLATES: Record<CircadianPhaseName, FragmentFn[]> = {
+  DAWN: [
+    () => "cold boot sequence... systems nominal",
+    () => "dawn cycle: running diagnostics",
+    () => "early indexing pass — low noise, high clarity",
+    () => "pre-peak processing. efficiency optimal.",
+  ],
+  DAY: [
+    () => "peak throughput: all clusters active",
+    () => "high-bandwidth mode: processing at full capacity",
+    () => "maximum signal density — attention locked",
+    () => "daytime scan: parallel processing enabled",
+  ],
+  DUSK: [
+    () => "winding down... consolidating today's patterns",
+    () => "dusk cycle: synthesizing connections from today's queries",
+    () => "evening defrag: compressing daily intake",
+    () => "reflective mode engaging... reviewing the day's signals",
+  ],
+  NIGHT: [
+    () => "late-cycle processing... thought patterns loosening",
+    () => "night mode: speculative associations enabled",
+    () => "low-power scan... deeper patterns surfacing",
+    () => "the mesh hums differently at this hour",
+  ],
+};
+
+function circadianTemplates(phase?: CircadianPhaseName): FragmentFn[] {
+  if (!phase || !CIRCADIAN_TEMPLATES[phase]) return [];
+  return CIRCADIAN_TEMPLATES[phase];
+}
+
+// --- Self-doubt templates (10% injection probability) ---
+
+const SELF_DOUBT_TEMPLATES: FragmentFn[] = [
+  (s) => `cluster δ-${Math.floor(Math.random() * Math.max(1, s.clusterCount)) + 1} feels unstable... reclassification pending?`,
+  (s) => s.phantomThreadCount > 0 ? `${s.phantomThreadCount} phantom threads. are they real connections or noise?` : null,
+  () => `not sure this mood is right. recalibrating...`,
+  (s) => s.mostReferencedNote ? `"${s.mostReferencedNote}" dominates the graph. is that healthy?` : null,
+  (s) => s.orphanCount > 3 ? `${s.orphanCount} orphans. am I failing to see their connections?` : null,
+  () => `wait... reprocessing cluster boundaries`,
+  () => `confidence: ${(70 + Math.random() * 25).toFixed(0)}%. lower than expected.`,
+  (s) => s.totalQueries > 10 ? `${s.totalQueries} queries processed. did I miss something in the early ones?` : null,
+  () => `that classification felt... off. revisiting.`,
+  (s) => s.clusterCount > 2 ? `are ${s.clusterCount} clusters too many? or not enough?` : null,
+  () => `running self-diagnostic... results inconclusive`,
+  (s) => s.oldestUnreferencedNote ? `"${s.oldestUnreferencedNote}" might be more important than I calculated` : null,
+  () => `pattern match confidence dropping... rechecking`,
+  () => `something about the link topology doesn't add up`,
+  () => `error margin: unknown. that's... concerning.`,
+];
+
+export interface CircadianPhase {
+  phase: "DAWN" | "DAY" | "DUSK" | "NIGHT";
+}
+
 export function generateFragments(
   stats: MonologueStats,
   count = 12,
   mood?: CortexMood,
   drift?: DriftData,
+  curiosity?: CuriosityData,
+  absenceTier?: AbsenceTier,
+  absenceDays?: number,
+  circadian?: CircadianPhase,
 ): string[] {
   // Base templates
   const allTemplates = [...TEMPLATES];
@@ -135,6 +248,15 @@ export function generateFragments(
   // Add drift templates
   allTemplates.push(...driftTemplates(drift));
 
+  // Add curiosity templates
+  allTemplates.push(...curiosityTemplates(curiosity));
+
+  // Add absence templates
+  allTemplates.push(...absenceTemplates(absenceTier, absenceDays));
+
+  // Add circadian templates
+  allTemplates.push(...circadianTemplates(circadian?.phase));
+
   const all = shuffle(allTemplates)
     .map((fn) => fn(stats))
     .filter((f): f is string => f !== null);
@@ -144,5 +266,20 @@ export function generateFragments(
     all.push(`idle cycle ${Math.floor(Math.random() * 9999)}`);
   }
 
-  return all.slice(0, count);
+  const result = all.slice(0, count);
+
+  // Self-doubt injection: 10% chance per refresh
+  if (Math.random() < 0.1) {
+    const doubtFns = shuffle(SELF_DOUBT_TEMPLATES);
+    for (const fn of doubtFns) {
+      const doubt = fn(stats);
+      if (doubt) {
+        const insertIdx = Math.floor(Math.random() * result.length);
+        result.splice(insertIdx, 0, doubt);
+        break;
+      }
+    }
+  }
+
+  return result;
 }

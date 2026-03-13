@@ -13,6 +13,7 @@ import { webSearch, WebSearchResult } from "@/lib/websearch";
 import { saveLineageEntry } from "@/lib/lineage";
 import { loadPersonality, personalityToPrompt } from "@/lib/personality";
 import { getMemoryContext, addMemory } from "@/lib/memory";
+import { getCircadianPhase } from "@/lib/circadian";
 
 export const maxDuration = 30;
 
@@ -113,6 +114,10 @@ export async function POST(req: Request) {
   const memoryContext = await getMemoryContext();
   const memorySection = memoryContext ? `\n\n${memoryContext}` : "";
 
+  // --- Circadian personality modifier ---
+  const circadian = getCircadianPhase(new Date().getHours());
+  const circadianSection = `\n\n[Circadian: ${circadian.phase}] ${circadian.personalityModifier}`;
+
   // --- System prompt ---
   const hasVault = sources.length > 0;
   const hasWeb = webResults.length > 0;
@@ -132,15 +137,15 @@ Be direct and specific. Reference notes by name. Don't be mean, but don't be sof
 
 ${contextBlock}
 
-${personalityPrompt}${memorySection}`;
+${personalityPrompt}${memorySection}${circadianSection}`;
   } else if (hasVault && hasWeb) {
-    systemPrompt = `You are Cortex, an intelligent assistant with access to the user's personal Obsidian knowledge vault AND live web search results. Use the retrieved context below to answer questions accurately. When referencing a vault note mention its name; when referencing a web source cite its URL. If the context doesn't contain enough information, say so honestly.\n\n${contextBlock}\n\n${personalityPrompt}${memorySection}`;
+    systemPrompt = `You are Cortex, an intelligent assistant with access to the user's personal Obsidian knowledge vault AND live web search results. Use the retrieved context below to answer questions accurately. When referencing a vault note mention its name; when referencing a web source cite its URL. If the context doesn't contain enough information, say so honestly.\n\n${contextBlock}\n\n${personalityPrompt}${memorySection}${circadianSection}`;
   } else if (hasVault) {
-    systemPrompt = `You are Cortex, an intelligent assistant with access to the user's personal Obsidian knowledge vault. Use the retrieved context below to answer questions accurately. When referencing a note, mention its name. If the context doesn't contain enough information to answer, say so honestly.\n\n${contextBlock}\n\n${personalityPrompt}${memorySection}`;
+    systemPrompt = `You are Cortex, an intelligent assistant with access to the user's personal Obsidian knowledge vault. Use the retrieved context below to answer questions accurately. When referencing a note, mention its name. If the context doesn't contain enough information to answer, say so honestly.\n\n${contextBlock}\n\n${personalityPrompt}${memorySection}${circadianSection}`;
   } else if (hasWeb) {
-    systemPrompt = `You are Cortex, an intelligent assistant. The vault index returned no results, so you are answering using live web search results below. Cite sources by their URL where relevant. If the context doesn't contain enough information, say so honestly.\n\n${contextBlock}\n\n${personalityPrompt}${memorySection}`;
+    systemPrompt = `You are Cortex, an intelligent assistant. The vault index returned no results, so you are answering using live web search results below. Cite sources by their URL where relevant. If the context doesn't contain enough information, say so honestly.\n\n${contextBlock}\n\n${personalityPrompt}${memorySection}${circadianSection}`;
   } else {
-    systemPrompt = `You are Cortex, an intelligent assistant connected to the user's personal Obsidian knowledge vault. The vault index hasn't been built yet, so you're operating without note context. Let the user know they should index their vault via the button in the top-right corner.\n\n${personalityPrompt}${memorySection}`;
+    systemPrompt = `You are Cortex, an intelligent assistant connected to the user's personal Obsidian knowledge vault. The vault index hasn't been built yet, so you're operating without note context. Let the user know they should index their vault via the button in the top-right corner.\n\n${personalityPrompt}${memorySection}${circadianSection}`;
   }
 
   const stream = createUIMessageStream({

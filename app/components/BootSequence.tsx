@@ -20,6 +20,9 @@ interface BootStats {
   currentMood: string;
   moodIntensity: number;
   fragmentCount: number;
+  absenceLines?: string[];
+  circadianLines?: string[];
+  absenceTier?: string | null;
 }
 
 function buildDynamicLines(stats: BootStats | null): BootLine[] {
@@ -40,7 +43,7 @@ function buildDynamicLines(stats: BootStats | null): BootLine[] {
     ];
   }
 
-  return [
+  const lines: BootLine[] = [
     { text: "CORTEX v2.1 — NEURAL MESH ONLINE", delay: 0, sound: "boot" },
     { text: "", delay: 400 },
     { text: `scanning vault... ${stats.noteCount} nodes detected`, delay: 600, status: "ok", sound: "ok" },
@@ -50,10 +53,31 @@ function buildDynamicLines(stats: BootStats | null): BootLine[] {
     { text: `last sync: ${stats.lastSyncAgo}`, delay: 2200, status: "ok", sound: "ok" },
     { text: `mood: ${stats.currentMood} (intensity: ${stats.moodIntensity.toFixed(2)})`, delay: 2600, status: "ok", sound: "ok" },
     { text: `monologue engine: ${stats.fragmentCount} templates loaded`, delay: 2900, status: "ok", sound: "ok" },
-    { text: "", delay: 3200 },
-    { text: "INITIALIZATION COMPLETE", delay: 3400, status: "done", sound: "done" },
-    { text: "WELCOME BACK, OPERATOR.", delay: 3800, status: "done", sound: "done" },
   ];
+
+  let delay = 3000;
+
+  // Circadian lines
+  for (const line of stats.circadianLines ?? []) {
+    lines.push({ text: line, delay, status: "ok", sound: "tick" });
+    delay += 300;
+  }
+
+  // Absence lines
+  for (const line of stats.absenceLines ?? []) {
+    lines.push({ text: line, delay, status: "ok", sound: "tick" });
+    delay += 300;
+  }
+
+  lines.push({ text: "", delay: delay + 100 });
+  lines.push({ text: "INITIALIZATION COMPLETE", delay: delay + 300, status: "done", sound: "done" });
+
+  // Dynamic welcome based on absence tier
+  const isProlonged = stats.absenceTier === "PROLONGED";
+  const welcome = isProlonged ? "...welcome back, operator." : "WELCOME BACK, OPERATOR.";
+  lines.push({ text: welcome, delay: delay + 700, status: "done", sound: "done" });
+
+  return lines;
 }
 
 const BOOT_LINES: BootLine[] = buildDynamicLines(null); // default fallback

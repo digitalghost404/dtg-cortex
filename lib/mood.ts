@@ -5,7 +5,7 @@
 
 import { getVaultMeta } from "./vault";
 import { getLineageStats } from "./lineage";
-import { getJSON } from "./kv";
+import { getJSON, setJSON } from "./kv";
 
 export type CortexMood =
   | "CONTEMPLATIVE"
@@ -100,4 +100,76 @@ export async function computeMood(): Promise<MoodState> {
     mood: "CONTEMPLATIVE",
     intensity: Math.max(0.3, 1 - recentQueryCount / 10),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Mood Transition Detection
+// ---------------------------------------------------------------------------
+
+export interface MoodTransition {
+  transitioned: boolean;
+  from: CortexMood;
+  to: CortexMood;
+  reason: string;
+}
+
+export interface MoodHistoryEntry {
+  mood: CortexMood;
+  intensity: number;
+  timestamp: string;
+}
+
+const MOOD_PREVIOUS_KEY = "cortex:mood:previous";
+
+function moodHistoryKey(date?: Date): string {
+  const d = date ?? new Date();
+  return `cortex:mood:history:${d.toISOString().slice(0, 10)}`;
+}
+
+function inferTransitionReason(from: CortexMood, to: CortexMood): string {
+  if (to === "RESTLESS") return "query rate spiking";
+  if (to === "FOCUSED") return "topic concentration increasing";
+  if (to === "DORMANT") return "activity ceased";
+  if (to === "ABSORBING") return "intake volume rising";
+  if (to === "CONTEMPLATIVE" && from === "RESTLESS") return "search patterns settling";
+  if (to === "CONTEMPLATIVE" && from === "FOCUSED") return "attention broadening";
+  if (to === "CONTEMPLATIVE") return "activity winding down";
+  return "internal state shift";
+}
+
+export async function detectMoodTransition(
+  current: MoodState
+): Promise<MoodTransition | null> {
+  const previous = await getJSON<CortexMood>(MOOD_PREVIOUS_KEY);
+
+  // Save current as the new previous
+  await setJSON(MOOD_PREVIOUS_KEY, current.mood);
+
+  // Append to today's mood history
+  const histKey = moodHistoryKey();
+  const history = (await getJSON<MoodHistoryEntry[]>(histKey)) ?? [];
+  history.push({
+    mood: current.mood,
+    intensity: current.intensity,
+    timestamp: new Date().toISOString(),
+  });
+  await setJSON(histKey, history);
+
+  // No previous mood recorded yet — no transition
+  if (!previous) return null;
+
+  // Same mood — no transition
+  if (previous === current.mood) return null;
+
+  return {
+    transitioned: true,
+    from: previous,
+    to: current.mood,
+    reason: inferTransitionReason(previous, current.mood),
+  };
+}
+
+export async function getMoodHistory(date?: Date): Promise<MoodHistoryEntry[]> {
+  const histKey = moodHistoryKey(date);
+  return (await getJSON<MoodHistoryEntry[]>(histKey)) ?? [];
 }

@@ -1,13 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { generateFragments, type MonologueStats, type DriftData } from "@/lib/monologue";
+import { generateFragments, type MonologueStats, type DriftData, type CuriosityData, type AbsenceTier, type CircadianPhase } from "@/lib/monologue";
 import type { CortexMood } from "@/lib/mood";
 
 interface MonologueResponse extends MonologueStats {
   mood: CortexMood | null;
   drift: DriftData | null;
   queryHistogram: number[];
+  circadianPhase?: string;
+  scrollSpeedFactor?: number;
+  curiosityGaps?: CuriosityData | null;
+  absenceTier?: AbsenceTier | null;
+  absenceDays?: number;
 }
 
 export default function VaultHeartbeat() {
@@ -16,6 +21,7 @@ export default function VaultHeartbeat() {
   const [queryHistogram, setQueryHistogram] = useState<number[]>(new Array(24).fill(0));
   const [queriesLastHour, setQueriesLastHour] = useState(0);
   const [visible, setVisible] = useState(false);
+  const [scrollSpeed, setScrollSpeed] = useState(0.03);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const animRef = useRef<number | null>(null);
   const scrollOffsetRef = useRef(0);
@@ -28,10 +34,15 @@ export default function VaultHeartbeat() {
       const data: MonologueResponse = await res.json();
       const mood = data.mood ?? undefined;
       const drift = data.drift ?? undefined;
-      const frags = generateFragments(data, 12, mood, drift);
+      const curiosity = data.curiosityGaps ?? undefined;
+      const absenceTier = data.absenceTier ?? undefined;
+      const absenceDays = data.absenceDays ?? undefined;
+      const circadian = data.circadianPhase ? { phase: data.circadianPhase as CircadianPhase["phase"] } : undefined;
+      const frags = generateFragments(data, 12, mood, drift, curiosity, absenceTier, absenceDays, circadian);
       setFragments(frags);
       setQueryHistogram(data.queryHistogram ?? new Array(24).fill(0));
       setQueriesLastHour(data.queryHistogram?.[23] ?? 0);
+      setScrollSpeed(0.03 * (data.scrollSpeedFactor ?? 1));
       setVisible(true);
     } catch {
       // silently fail
@@ -116,7 +127,7 @@ export default function VaultHeartbeat() {
     const frame = (now: number) => {
       const dt = lastFrameRef.current ? now - lastFrameRef.current : 16;
       lastFrameRef.current = now;
-      scrollOffsetRef.current += dt * 0.03; // pixels per ms
+      scrollOffsetRef.current += dt * scrollSpeed; // pixels per ms, circadian-adjusted
       const textEl = document.getElementById("vault-heartbeat-text");
       if (textEl) {
         const totalWidth = textEl.scrollWidth / 2;
@@ -133,7 +144,7 @@ export default function VaultHeartbeat() {
       if (animRef.current !== null) cancelAnimationFrame(animRef.current);
       lastFrameRef.current = 0;
     };
-  }, [visible, fragments]);
+  }, [visible, fragments, scrollSpeed]);
 
   if (!visible || fragments.length === 0) return null;
 

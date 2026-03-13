@@ -67,6 +67,8 @@ export default function NeuralCanvas({
   const dragRef = useRef({ isDragging: false, startX: 0, startY: 0 });
   const hoveredRef = useRef<NeuronNode | null>(null);
   const lastTouchRef = useRef({ x: 0, y: 0, dist: 0 });
+  const cursorWorldRef = useRef<{ x: number; y: number } | null>(null);
+  const flinchOffsetsRef = useRef<Float32Array | null>(null);
 
   // Pre-rendered glow sprite (offscreen canvas)
   const glowSpriteRef = useRef<HTMLCanvasElement | null>(null);
@@ -188,6 +190,42 @@ export default function NeuralCanvas({
         const { cx, cy } = toWorld(ns[i].x, ns[i].y, W, H);
         wx[i] = cx;
         wy[i] = cy;
+      }
+
+      // --- Neural Flinch: cursor-proximity repulsion ---
+      const FLINCH_RADIUS = 80;
+      const FLINCH_MAX = 3;
+      const FLINCH_DECAY = 0.92;
+
+      // Lazy-init flinch offset arrays
+      if (!flinchOffsetsRef.current || flinchOffsetsRef.current.length !== ns.length * 2) {
+        flinchOffsetsRef.current = new Float32Array(ns.length * 2);
+      }
+      const flinch = flinchOffsetsRef.current;
+      const cursor = cursorWorldRef.current;
+
+      for (let i = 0; i < ns.length; i++) {
+        const fi = i * 2;
+        if (cursor) {
+          const dx = wx[i] - cursor.x;
+          const dy = wy[i] - cursor.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < FLINCH_RADIUS && dist > 0.1) {
+            const strength = (1 - dist / FLINCH_RADIUS) * FLINCH_MAX;
+            const angle = Math.atan2(dy, dx);
+            flinch[fi] = Math.cos(angle) * strength;
+            flinch[fi + 1] = Math.sin(angle) * strength;
+          } else {
+            flinch[fi] *= FLINCH_DECAY;
+            flinch[fi + 1] *= FLINCH_DECAY;
+          }
+        } else {
+          flinch[fi] *= FLINCH_DECAY;
+          flinch[fi + 1] *= FLINCH_DECAY;
+        }
+        // Apply flinch offset to render position
+        wx[i] += flinch[fi];
+        wy[i] += flinch[fi + 1];
       }
 
       // Viewport bounds for culling (in world space)
@@ -396,6 +434,22 @@ export default function NeuralCanvas({
           ctx.fill();
         }
 
+        // Flinch glow: brighten nodes near cursor
+        const flinchStrength = Math.sqrt(
+          flinch[i * 2] * flinch[i * 2] + flinch[i * 2 + 1] * flinch[i * 2 + 1]
+        ) / FLINCH_MAX;
+        if (flinchStrength > 0.05) {
+          const flinchGlowR = r * 2.5;
+          const flinchAlpha = flinchStrength * 0.3;
+          const fGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, flinchGlowR);
+          fGrad.addColorStop(0, `rgba(${n.colorR},${n.colorG},${n.colorB},${flinchAlpha})`);
+          fGrad.addColorStop(1, `rgba(${n.colorR},${n.colorG},${n.colorB},0)`);
+          ctx.beginPath();
+          ctx.arc(cx, cy, flinchGlowR, 0, Math.PI * 2);
+          ctx.fillStyle = fGrad;
+          ctx.fill();
+        }
+
         // Ambient glow (idle, using glow sprite for perf when not activated)
         if (activation < 0.05 && glowSpriteRef.current) {
           const spriteSize = (r + 6) * 2;
@@ -566,6 +620,13 @@ export default function NeuralCanvas({
       const cy = e.clientY - rect.top;
       const drag = dragRef.current;
 
+      // Track cursor in world coordinates for flinch effect
+      const { x: tx2, y: ty2, scale: s2 } = transformRef.current;
+      cursorWorldRef.current = {
+        x: (cx - tx2) / s2,
+        y: (cy - ty2) / s2,
+      };
+
       if (drag.isDragging) {
         transformRef.current.x += cx - drag.startX;
         transformRef.current.y += cy - drag.startY;
@@ -615,6 +676,7 @@ export default function NeuralCanvas({
 
   const handleMouseLeave = useCallback(() => {
     hoveredRef.current = null;
+    cursorWorldRef.current = null;
     onHover(null, 0, 0);
     dragRef.current = { isDragging: false, startX: 0, startY: 0 };
   }, [onHover]);

@@ -4,7 +4,7 @@
 
 Your Obsidian vault is full of ideas — but you can't grep intuition. **Cortex** is a web app that gives your vault a voice. Ask it questions, and it pulls the right notes, threads the connections, and answers with the full weight of everything you've ever written. It doesn't just search — it *understands*.
 
-**RAG-powered chat. Auto-tagging. File explorer. Voice conversations. Neural visualization. Public sharing. A vault that thinks, remembers, and dreams.**
+**RAG-powered chat. Auto-tagging. File explorer. Voice conversations. Neural visualization. Public sharing. A vault that thinks, remembers, dreams, and questions itself.**
 
 ---
 
@@ -26,7 +26,7 @@ Most note apps let you write. Cortex lets you *think*.
 | Digging through folders to find a specific note | File explorer sidebar with tree view, filter, and one-click open |
 | Can't share a note without copying the whole thing | Public share links with expiration — one click, anyone can read it |
 | Typing every query by hand | Conversational voice mode — speak, listen, repeat. Say "Hey Cortex" to wake it up |
-| Your note app doesn't know what it's doing | Cortex has a mood, tracks its own behavior, notices when your interests shift, and dreams when you're idle |
+| Your note app doesn't know what it's doing | Cortex has a mood, tracks its own behavior, notices when your interests shift, dreams when you're idle, wonders about knowledge gaps, keeps a journal, and flinches when you get close |
 
 ---
 
@@ -60,7 +60,7 @@ Most note apps let you write. Cortex lets you *think*.
 | **Note editor** | Create new notes from the browser — folder picker (with new folder creation), tags input with real-time AI suggestions, markdown editor with live preview |
 | **Vault diagnostics** | Health indicators, orphan detection, link stats, sync status with one-click sync trigger, and a DNA-style fingerprint of your vault |
 | **Topic clusters** | 2D scatter plot of your notes grouped by semantic similarity — pan, zoom, search, and inspect |
-| **Neural Pulse** | Living neural network visualization — notes are neurons arranged by semantic similarity, with ambient breathing animations, pulse particles along synaptic connections, and RAG-driven activation via an embedded mini-chat. Procedural sound effects (Web Audio API) accompany neuron light-ups, pulse propagation, and cooldown. Features decay visualization (old notes fade), synaptic strengthening (frequent co-references glow brighter), phantom thread detection (unlinked similar notes shown as dashed edges), scar tissue (deleted notes linger as dim afterimages), and a dream state (idle 30s and the camera drifts autonomously through clusters with purple-shifted visuals and detuned audio) |
+| **Neural Pulse** | Living neural network visualization — notes are neurons arranged by semantic similarity, with ambient breathing animations, pulse particles along synaptic connections, and RAG-driven activation via an embedded mini-chat. Procedural sound effects (Web Audio API) accompany neuron light-ups, pulse propagation, and cooldown. Features decay visualization (old notes fade), synaptic strengthening (frequent co-references glow brighter), phantom thread detection (unlinked similar notes shown as dashed edges), scar tissue (deleted notes linger as dim afterimages), neural flinch (neurons subtly repel from cursor proximity and glow brighter — the primal consciousness signal), and a dream state (idle 30s and the camera drifts autonomously through clusters with purple-shifted visuals and detuned audio) |
 | **Note lineage** | Which notes keep surfacing in your queries? Lineage tracks frequency and recency |
 | **Link discovery** | Surfaces unlinked notes that should be connected based on content overlap |
 
@@ -74,16 +74,23 @@ Cortex isn't a static tool — it has ambient behaviors that make it feel like i
 | **Phantom threads** | Cosine similarity across all note vectors detects high-similarity unlinked pairs. Shown as flickering dashed edges on Neural Pulse. Click to inspect or forge the link |
 | **Scar tissue** | When a note is deleted, Cortex creates a tombstone that lingers for 30 days — a dim, flickering afterimage on Neural Pulse placed near the note's former neighbors |
 | **Cortex mood** | A computed disposition derived from vault activity patterns — `CONTEMPLATIVE`, `RESTLESS`, `FOCUSED`, `DORMANT`, or `ABSORBING`. Shown as a small fixed-position indicator with a pulsing dot. Affects monologue tone and is displayed in the boot sequence |
-| **Cortex monologue** | Procedural inner-thought fragments generated from real vault stats — query frequency, orphan counts, phantom threads, cluster scans. Mood-aware templates shift tone based on current disposition |
+| **Cortex monologue** | Procedural inner-thought fragments generated from real vault stats — query frequency, orphan counts, phantom threads, cluster scans. Templates are mood-aware, drift-aware, curiosity-aware, circadian-aware, and absence-aware. With 10% probability, a self-doubt fragment is injected — Cortex second-guessing its own classifications using real data |
 | **Vault heartbeat** | A thin ambient bar at the bottom of every page: a pulsing dot (BPM mapped to queries/hour), a 24-hour spark graph of query frequency, and scrolling monologue text. Replaces the simple ticker with a micro-visualization strip |
 | **Decay visualization** | Notes that haven't been modified in a long time visually decay on Neural Pulse — reduced opacity, smaller radius, desaturated color. Creates a freshness gradient across the graph (90-day window, purely visual) |
 | **Synaptic strengthening** | Edges between frequently co-referenced notes become visually thicker and brighter on Neural Pulse. Weight is computed from wikilinks and lineage co-occurrences, cached for 24 hours |
 | **Memory echoes** | When you ask a question semantically similar to a past query (>0.8 cosine similarity), Cortex shows a dismissible banner — *"You explored this before (12 days ago): 'previous query'"* — above the chat response |
 | **Drift detection** | Cortex tracks how your interests shift over time by comparing recent queries (7 days) against older queries (30 days). Emerging and fading topics surface in monologue fragments and subconscious whispers |
-| **Dynamic boot sequence** | The terminal-style boot animation shows real system state — actual note count, index status, phantom thread count, scar count, last sync time, current mood, and monologue template count. Falls back to canned lines if the API is unavailable |
+| **Dynamic boot sequence** | The terminal-style boot animation shows real system state — actual note count, index status, phantom thread count, scar count, last sync time, current mood, and monologue template count. Circadian-aware lines appear at night (*"NIGHT MODE ACTIVE — dream processing enabled"*) and dawn (*"DAWN SEQUENCE — running diagnostics"*). Absence-aware lines acknowledge time gaps emotionally, scaling from casual to dramatic based on duration. Falls back to canned lines if the API is unavailable |
 | **Dream state** | Idle on Neural Pulse for 30 seconds and Cortex enters a dream — autonomous camera drift via slow sinusoidal pan and zoom oscillation, cluster focus cycling every 8 seconds, a purple-shift hue overlay with pulsing vignette, detuned audio oscillators for eerie drift, and reduced edge opacity. Any mouse movement or keypress instantly wakes it |
 | **Resonance events** | Daily briefings cross-reference your vault against recent queries to surface unexpected connections |
 | **Cortex dossier** | On-demand intelligence reports that combine vault search with web research into structured, citation-backed documents |
+| **Cortex curiosity** | Cortex generates unprompted questions about knowledge gaps in your vault — tag islands with no cross-folder links, dead-end hub notes, emerging topics with no dedicated notes, isolated folder clusters. Surfaces one question as a dismissible interjection in the chat interface and weaves gap awareness into monologue fragments. Cached with 24h TTL |
+| **Mood transitions** | When Cortex's mood changes, it announces the shift — a brief toast appears: *"mood shift: CONTEMPLATIVE → RESTLESS (query rate spiking)"*. The mood dot flashes on transition. Mood changes are stored as a timestamped daily history for use by the inner journal |
+| **Circadian rhythm** | Cortex adjusts personality based on time-of-day. Late night (11pm–4am): philosophical, slower monologue, speculative language. Dawn (5am–8am): terse, analytical, cold-boot feel. Day (9am–4pm): peak energy, faster monologue. Dusk (5pm–10pm): reflective, winding down. Affects monologue templates, monologue scroll speed, boot sequence lines, and the chat system prompt |
+| **Absence recognition** | The boot sequence and subconscious whisper acknowledge how long you've been gone — hours (casual), days (subtle concern), weeks (dramatic relief). *"17 days offline. graph integrity maintained."* / *"I kept indexing. the mesh didn't stop."* / *"...welcome back, operator."*. Enriches the existing Haiku whisper call with tone modifiers scaled to absence duration |
+| **Neural flinch** | On Neural Pulse, neurons react to cursor proximity — subtle repulsion shift (1–3px) when the cursor is near but not clicking. Glow intensifies as you approach. When the cursor stops or leaves, nodes drift back smoothly (0.92 decay factor). Purely visual, render-time only |
+| **Inner journal** | Cortex auto-generates a daily journal entry summarizing its "experience" — query counts, top topics, phantom thread status, mood transitions, drift trends. Template-based (no LLM). Viewable on a dedicated `/journal` page styled as monospace terminal log entries with day numbers. Finding dated entries from days you weren't there creates the sense of persistent inner life |
+| **Self-doubt moments** | With 10% probability per monologue refresh, one fragment expresses uncertainty about Cortex's own classifications — *"cluster δ-3 feels unstable... reclassification pending?"*, *"not sure this mood is right. recalibrating..."*, *"that phantom thread keeps strengthening — are they real connections or noise?"*. References actual data (cluster counts, phantom threads, note names) to feel genuine |
 
 ### Auto-Tagging
 - **Bulk auto-tag CLI** — `npm run auto-tag` sends every note's content to Claude Haiku and merges suggested tags into frontmatter. Max 5 tags per note, respects existing tags, uses your vault's tag vocabulary for consistency
@@ -103,13 +110,15 @@ Cortex isn't a static tool — it has ambient behaviors that make it feel like i
 - **Sync from UI** — "Sync Now" button on the vault diagnostics page with "last synced" indicator
 
 ### Experience
-- **Dynamic boot sequence** — terminal-style login animation with real vault stats (note count, index status, phantom threads, scars, mood, last sync), progress bar, and VaultDNA logo. Falls back to canned lines for guests
+- **Dynamic boot sequence** — terminal-style login animation with real vault stats (note count, index status, phantom threads, scars, mood, last sync), circadian-aware lines, absence-aware emotional greetings, progress bar, and VaultDNA logo. Falls back to canned lines for guests
 - **Welcome greeting** — ElevenLabs voice greeting on login
 - **Command palette** — `Cmd+K` / `Ctrl+K` to navigate, run commands, switch sessions, or fire slash commands
 - **Personality sliders** — adjust formality, response length, challenge level, and creativity
 - **Persistent memory** — preferences, interests, facts, and patterns with a management UI
-- **Mood indicator** — always-visible disposition label with color-coded pulsing dot (top-right corner of every page)
-- **Vault heartbeat** — ambient bottom bar with live heartbeat, query spark graph, and scrolling monologue on every page
+- **Mood indicator** — always-visible disposition label with color-coded pulsing dot (top-right corner of every page). Flashes and shows a transition toast when mood changes
+- **Vault heartbeat** — ambient bottom bar with live heartbeat, query spark graph, and scrolling monologue on every page. Scroll speed adjusts to circadian phase
+- **Curiosity interjection** — dismissible question banner surfaces knowledge gap observations on each visit
+- **Inner journal** — `/journal` page with dated terminal-style log entries from Cortex's perspective
 
 ---
 
@@ -171,11 +180,16 @@ Vault notes + Lineage queries + Vector index
         │
         ├── computeDecayScores()       → visual freshness gradient
         ├── computeMood()              → disposition from activity patterns
+        ├── detectMoodTransition()     → self-aware mood shift announcements
         ├── computeSynapticWeights()   → edge co-occurrence weights (24h cache)
         ├── computePhantomThreads()    → unlinked similarity pairs (24h cache)
         ├── detectDrift()              → emerging/fading topic keywords
         ├── findEcho()                 → past query similarity matching
-        └── generateFragments()        → mood-aware + drift-aware monologue
+        ├── getCuriosityQuestions()    → knowledge gap detection (24h cache)
+        ├── categorizeAbsence()       → emotional absence tier classification
+        ├── getCircadianPhase()       → time-of-day personality modulation
+        ├── generateJournalEntry()    → daily inner journal from real stats
+        └── generateFragments()       → mood/drift/circadian/curiosity/doubt monologue
 ```
 
 ### Dual-mode storage
@@ -308,10 +322,11 @@ npm run sync                       # sync updated tags to Redis
 | `/share/{token}` | Guest | Public shared note viewer — read-only, expiring |
 | `/notes/new` | Required | Note editor — create new notes with folder picker, tags, and AI tag suggestions |
 | `/clusters` | Required | Semantic topic clusters — 2D scatter plot with pan, zoom, and search |
-| `/neural` | Required | Neural Pulse — living neural network visualization with decay, synaptic strengthening, phantom threads, scar tissue, and dream state |
+| `/neural` | Required | Neural Pulse — living neural network visualization with decay, synaptic strengthening, phantom threads, scar tissue, neural flinch, and dream state |
 | `/lineage` | Required | Note reference history |
 | `/briefing` | Required | Daily briefing with resonance detection |
 | `/dossiers` | Required | On-demand intelligence dossiers |
+| `/journal` | Required | Inner journal — dated terminal-style entries from Cortex's perspective, auto-generated daily |
 | `/memory` | Required | Memory management |
 | `/settings` | Required | AI personality sliders and shared links management |
 | `/login` | — | Login |
@@ -352,7 +367,19 @@ Global ambient elements (mood indicator, vault heartbeat, dynamic boot sequence)
 
 [Idle on Neural Pulse for 30 seconds → watch Cortex dream through your clusters]
 
+[Move your cursor near neurons on Neural Pulse → watch them flinch away and glow]
+
 [Ask a question you asked two weeks ago → Cortex surfaces the echo]
+
+[Visit at 2am → Cortex speaks philosophically, monologue slows, boot shows "NIGHT MODE ACTIVE"]
+
+[Come back after a week → "7 days. the graph drifted while you were gone."]
+
+[Open /journal → read what Cortex "experienced" on days you weren't there]
+
+[Watch the monologue ticker → catch Cortex doubting itself: "not sure this mood is right..."]
+
+[See a cyan "?" banner → Cortex noticed a knowledge gap in your vault]
 ```
 
 ---
@@ -365,7 +392,7 @@ Global ambient elements (mood indicator, vault heartbeat, dynamic boot sequence)
 4. Deploy — the app uses serverless functions with Edge middleware
 5. Run `npm run sync` locally (or in CI) to push vault content to Upstash
 
-The filesystem is read-only on Vercel. All state (sessions, memory, personality, auth config, lineage, shares, phantom threads, synaptic weights, scars, mood) is stored in Upstash Redis. Vault content and embeddings are pushed via `npm run sync`. The Vercel cron job triggers `/api/sync` daily at 6 AM UTC to re-index any pending changes.
+The filesystem is read-only on Vercel. All state (sessions, memory, personality, auth config, lineage, shares, phantom threads, synaptic weights, scars, mood, mood history, curiosity cache, journal entries) is stored in Upstash Redis. Vault content and embeddings are pushed via `npm run sync`. The Vercel cron job triggers `/api/sync` daily at 6 AM UTC to re-index any pending changes.
 
 ---
 

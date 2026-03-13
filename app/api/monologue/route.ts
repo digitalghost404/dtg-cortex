@@ -6,16 +6,21 @@ import type { MonologueStats } from "@/lib/monologue";
 import type { PhantomThread } from "@/lib/phantom-threads";
 import { computeMood } from "@/lib/mood";
 import { detectDrift } from "@/lib/drift";
+import { getCircadianPhase } from "@/lib/circadian";
+import { getCuriosityGapData } from "@/lib/curiosity";
+import { categorizeAbsence } from "@/lib/absence";
 
 export async function GET() {
   try {
-    const [meta, lineageStats, notes, phantoms, mood, drift] = await Promise.all([
+    const [meta, lineageStats, notes, phantoms, mood, drift, curiosityGaps, lastVisit] = await Promise.all([
       getVaultMeta(),
       getLineageStats(),
       getAllNotes(),
       getJSON<PhantomThread[]>("cortex:phantom-threads"),
       computeMood().catch(() => null),
       detectDrift().catch(() => null),
+      getCuriosityGapData().catch(() => null),
+      getJSON<string>("cortex:lastVisit"),
     ]);
 
     // Find oldest unreferenced note
@@ -72,12 +77,23 @@ export async function GET() {
       }
     }
 
+    // Circadian phase
+    const circadian = getCircadianPhase(new Date().getHours());
+
+    // Absence tier
+    const absence = categorizeAbsence(lastVisit);
+
     return NextResponse.json({
       ...stats,
       mood: mood?.mood ?? null,
       moodIntensity: mood?.intensity ?? null,
       drift: drift ?? null,
       queryHistogram,
+      circadianPhase: circadian.phase,
+      scrollSpeedFactor: circadian.scrollSpeedFactor,
+      curiosityGaps: curiosityGaps ?? null,
+      absenceTier: absence?.tier ?? null,
+      absenceDays: absence?.days ?? 0,
     });
   } catch (err) {
     console.error("[monologue]", err);

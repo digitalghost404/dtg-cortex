@@ -8,6 +8,7 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { detectDrift } from "./drift";
+import { categorizeAbsence } from "./absence";
 
 const LAST_VISIT_KEY = "cortex:lastVisit";
 const LAST_NOTE_COUNT_KEY = "cortex:lastNoteCount";
@@ -78,6 +79,13 @@ export async function computeDiff(): Promise<SubconsciousDiff | null> {
     // drift data is optional
   }
 
+  // Absence context for whisper tone
+  let absenceContext = "";
+  const absence = categorizeAbsence(lastVisit);
+  if (absence && absence.whisperToneModifier) {
+    absenceContext = ` ${absence.whisperToneModifier}`;
+  }
+
   // Generate whisper with Haiku
   let whisper: string;
   try {
@@ -88,7 +96,7 @@ export async function computeDiff(): Promise<SubconsciousDiff | null> {
           "A single short sentence (max 20 words) summarizing vault activity in a cyberpunk systems-monitor tone. No emoji. Example: '3 nodes modified, cluster growth detected in distributed-systems sector.'"
         ),
       }),
-      prompt: `Vault activity since last visit: ${modifiedNotes} notes modified, ${newLinks} new outgoing links from modified notes, ${deletedEstimate} notes deleted. Total vault size: ${notes.length} notes.${driftContext} Synthesize a terse one-liner in cyberpunk systems-monitor tone.`,
+      prompt: `Vault activity since last visit: ${modifiedNotes} notes modified, ${newLinks} new outgoing links from modified notes, ${deletedEstimate} notes deleted. Total vault size: ${notes.length} notes.${driftContext}${absenceContext} Synthesize a terse one-liner in cyberpunk systems-monitor tone.`,
     });
     whisper = object.whisper;
   } catch {

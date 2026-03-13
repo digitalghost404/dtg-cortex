@@ -230,8 +230,65 @@ export default function Home() {
         <BootSequence onComplete={() => setBootDone(true)} />
       )}
       <SubconsciousBanner />
+      <CuriosityInterjection />
       <AuthenticatedHome logout={logout} />
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CuriosityInterjection — shows one curiosity question as a dismissible banner
+// ---------------------------------------------------------------------------
+
+function CuriosityInterjection() {
+  const [question, setQuestion] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/curiosity")
+      .then((r) => r.json())
+      .then((data: { questions: string[] }) => {
+        if (data.questions?.length > 0) {
+          setQuestion(data.questions[Math.floor(Math.random() * data.questions.length)]);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  if (!question || dismissed) return null;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: 44,
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 45,
+        maxWidth: 520,
+        width: "90%",
+        padding: "6px 12px",
+        borderRadius: "2px",
+        background: "rgba(2, 4, 8, 0.85)",
+        border: "1px solid rgba(34, 211, 238, 0.12)",
+        backdropFilter: "blur(6px)",
+        fontFamily: "var(--font-geist-mono, monospace)",
+        fontSize: "0.55rem",
+        letterSpacing: "0.06em",
+        color: "rgba(34, 211, 238, 0.7)",
+        fontStyle: "italic",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: "6px",
+      }}
+      onClick={() => setDismissed(true)}
+      title="Click to dismiss"
+    >
+      <span style={{ opacity: 0.5, flexShrink: 0 }}>?</span>
+      <span style={{ flex: 1 }}>{question}</span>
+      <span style={{ opacity: 0.3, flexShrink: 0, fontSize: "0.7rem" }}>&times;</span>
+    </div>
   );
 }
 
@@ -846,6 +903,15 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
               </Link>
 
               <Link
+                href="/journal"
+                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
+                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
+              >
+                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9998;</span>
+                JOURNAL
+              </Link>
+
+              <Link
                 href="/settings"
                 className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
                 style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
@@ -942,6 +1008,7 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
                   { href: "/briefing", icon: "\u25c7", label: "BRIEFING" },
                   { href: "/dossiers", icon: "\u25c6", label: "DOSSIERS" },
                   { href: "/memory",   icon: "\u25c9", label: "MEMORY"   },
+                  { href: "/journal",  icon: "\u270e", label: "JOURNAL"  },
                   { href: "/settings", icon: "\u2699", label: "SETTINGS" },
                 ] as const
               ).map(({ href, icon, label }) => (

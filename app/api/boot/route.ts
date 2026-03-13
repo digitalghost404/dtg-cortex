@@ -4,8 +4,9 @@ import { computeMood } from "@/lib/mood";
 import { getPhantomThreads } from "@/lib/phantom-threads";
 import { getScars } from "@/lib/scars";
 import { getJSON } from "@/lib/kv";
-import { generateFragments, type MonologueStats } from "@/lib/monologue";
 import { indexExists } from "@/lib/indexer";
+import { categorizeAbsence } from "@/lib/absence";
+import { getCircadianPhase } from "@/lib/circadian";
 
 export async function GET() {
   try {
@@ -39,6 +40,24 @@ export async function GET() {
     // Fragment count (template count in monologue.ts)
     const fragmentCount = 15; // base template count
 
+    // Absence recognition
+    const absence = categorizeAbsence(lastVisit);
+
+    // Circadian phase
+    const circadian = getCircadianPhase(new Date().getHours());
+
+    // Build dynamic boot lines
+    const absenceLines = absence && absence.tier !== "BRIEF"
+      ? absence.bootLines
+      : [];
+
+    const circadianLines: string[] = [];
+    if (circadian.phase === "NIGHT") {
+      circadianLines.push("NIGHT MODE ACTIVE — dream processing enabled");
+    } else if (circadian.phase === "DAWN") {
+      circadianLines.push("DAWN SEQUENCE — running diagnostics");
+    }
+
     return NextResponse.json({
       noteCount,
       totalWords,
@@ -49,6 +68,9 @@ export async function GET() {
       currentMood: mood.mood,
       moodIntensity: mood.intensity,
       fragmentCount,
+      absenceLines,
+      circadianLines,
+      absenceTier: absence?.tier ?? null,
     });
   } catch (err) {
     console.error("[boot]", err);
