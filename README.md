@@ -4,7 +4,7 @@
 
 Your Obsidian vault is full of ideas — but you can't grep intuition. **Cortex** is a web app that gives your vault a voice. Ask it questions, and it pulls the right notes, threads the connections, and answers with the full weight of everything you've ever written. It doesn't just search — it *understands*.
 
-**RAG-powered chat. Tag browser. Random discovery. One vault that finally talks back.**
+**RAG-powered chat. Tag browser. Random discovery. Note creation. One vault that finally talks back.**
 
 ---
 
@@ -20,6 +20,7 @@ Most note apps let you write. Cortex lets you *think*.
 | No idea which topics are dense and which are thin | Tag browser shows your vault's regions at a glance with note counts per tag |
 | Never stumbling on old ideas | Discover mode serves random notes — rediscover what you forgot you knew |
 | Missing connections you should have made | Link discovery finds notes that are semantically related but not yet linked |
+| Can only write notes in Obsidian | Create new notes from the browser — folder picker, tag input, markdown editor with live preview |
 
 ---
 
@@ -32,22 +33,29 @@ Most note apps let you write. Cortex lets you *think*.
 - **Guest chat** — unauthenticated visitors can chat with the vault (rate-limited, ephemeral, Haiku-backed)
 - **Starter prompts** — tap-to-ask suggestions in guest mode for instant exploration
 - **Web search** — prefix any message with `/web` to pull live results via Tavily
+- **Vault search** — prefix any message with `/search` to search your vault inline without leaving chat
+- **Image upload** — drag-and-drop or attach images to your messages for multimodal queries
 - **Text-to-speech** — hear responses read aloud via ElevenLabs (browser fallback for guests)
 - **Voice input** — speak your questions with browser speech recognition
 - **Slash commands** — `/summarize`, `/connections`, `/gaps`, `/explain`, `/related`, `/timeline`, `/debate`
 - **Memory** — Cortex learns your preferences, interests, and patterns from conversations and injects them into future context
+- **Citation previews** — click any source citation to preview the full note content inline
 
 ### Vault Exploration
 | Feature | Description |
 |---------|-------------|
 | **Tag browser** | Browse every tag in your vault, see note counts, expand to view tagged notes — filterable and mobile-friendly |
 | **Discover** | Random note surfacing — tap shuffle to rediscover forgotten ideas with content previews, tags, and connection counts |
-| **Note editor** | Create new notes from the browser — folder picker, tag input, markdown editor with live preview |
+| **Note editor** | Create new notes from the browser — folder picker (with new folder creation), tag input, markdown editor with live preview |
 | **Vault diagnostics** | Health indicators, orphan detection, link stats, and a DNA-style fingerprint of your vault |
+| **Topic clusters** | 2D scatter plot of your notes grouped by semantic similarity — pan, zoom, search, and inspect |
 | **Note lineage** | Which notes keep surfacing in your queries? Lineage tracks frequency and recency |
 | **Link discovery** | Surfaces unlinked notes that should be connected based on content overlap |
 
-### Personalisation
+### Experience
+- **Boot sequence** — terminal-style login animation with system checks, progress bar, and VaultDNA logo
+- **Welcome greeting** — ElevenLabs voice greeting on login
+- **Command palette** — `Cmd+K` / `Ctrl+K` to navigate, run commands, switch sessions, or fire slash commands
 - **Personality sliders** — adjust formality, response length, challenge level, and creativity
 - **Persistent memory** — preferences, interests, facts, and patterns with a management UI
 
@@ -63,7 +71,7 @@ Cortex is designed to be deployed on the public internet as a personal tool.
 - **TOTP replay prevention** — atomic set-if-not-exists prevents reuse of one-time codes
 - **CSRF protection** — origin validation on all mutating requests
 - **Guest mode** — unauthenticated visitors can chat (rate-limited via Haiku), browse tags, discover random notes, and view vault diagnostics (read-only, zero API cost on non-chat routes)
-- **Protected routes** — full chat, web search, TTS, sessions, memory, lineage, clusters, and settings require authentication
+- **Protected routes** — full chat, web search, TTS, sessions, memory, lineage, clusters, note creation, and settings require authentication
 - **Security headers** — CSP, HSTS, X-Frame-Options DENY, X-Content-Type-Options, Referrer-Policy, Permissions-Policy
 - **Edge-compatible token revocation** — middleware checks JWT revocation via Upstash REST API before hitting any route
 
@@ -199,7 +207,7 @@ For **local development**, the app reads directly from the filesystem at `VAULT_
 | `/tags` | Guest | Tag browser — explore every tag and its notes |
 | `/discover` | Guest | Random note discovery — shuffle through your vault |
 | `/notes/new` | Required | Note editor — create new notes with folder picker and tags |
-| `/clusters` | Required | Semantic topic clusters |
+| `/clusters` | Required | Semantic topic clusters — 2D scatter plot with pan, zoom, and search |
 | `/lineage` | Required | Note reference history |
 | `/memory` | Required | Memory management |
 | `/settings` | Required | AI personality sliders |
@@ -226,6 +234,8 @@ Guest exploration routes (vault, tags, discover) are read-only and make zero LLM
 "Challenge my understanding of free will based on what I've written"
 
 "/web What are the latest developments in retrieval-augmented generation?"
+
+"/search distributed systems" — search your vault inline
 
 "Create a timeline of everything related to my career transition"
 

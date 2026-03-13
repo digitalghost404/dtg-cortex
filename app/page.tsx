@@ -181,6 +181,32 @@ export default function Home() {
     }
   }, [isAuthenticated, authLoading]);
 
+  // Play ElevenLabs welcome greeting 1s after boot sequence completes
+  useEffect(() => {
+    if (showBoot && bootDone) {
+      const timer = setTimeout(() => {
+      fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "Welcome to the cortex neural interface Xavier" }),
+      })
+        .then((res) => {
+          if (!res.ok) return;
+          return res.blob();
+        })
+        .then((blob) => {
+          if (!blob) return;
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          audio.play().catch(() => {});
+          audio.onended = () => URL.revokeObjectURL(url);
+        })
+        .catch(() => {});
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [showBoot, bootDone]);
+
   if (authLoading) {
     return (
       <div
@@ -1311,7 +1337,7 @@ function ChatView({ sessionId, initialMessages, onSessionUpdated, onInjectInput,
 
           {/* Empty state */}
           {messages.length === 0 && searchEntries.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-72 gap-6 text-center">
+            <div className="flex flex-col items-center justify-center flex-1 min-h-[60vh] gap-6 text-center">
               <div className="relative flex items-center justify-center">
                 <div
                   className="absolute rounded-full empty-state-ring"
@@ -1882,7 +1908,7 @@ function GuestChatView() {
 
           {/* Empty state */}
           {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-72 gap-6 text-center">
+            <div className="flex flex-col items-center justify-center flex-1 min-h-[60vh] gap-6 text-center">
               <div className="relative flex items-center justify-center">
                 <div
                   className="absolute rounded-full empty-state-ring"

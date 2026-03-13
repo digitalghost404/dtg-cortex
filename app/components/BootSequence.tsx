@@ -7,38 +7,140 @@ interface BootLine {
   text: string;
   delay: number;     // ms before this line appears
   status?: "ok" | "loading" | "done";
+  sound?: "tick" | "ok" | "done" | "boot";
 }
 
 const BOOT_LINES: BootLine[] = [
-  { text: "CORTEX NEURAL INTERFACE v2.0", delay: 0 },
+  { text: "CORTEX NEURAL INTERFACE v2.0", delay: 0, sound: "boot" },
   { text: "", delay: 400 },
-  { text: "AUTHENTICATING .......... OK", delay: 600, status: "ok" },
-  { text: "LOADING VAULT INDEX ..... OK", delay: 1000, status: "ok" },
-  { text: "INITIALIZING RAG ENGINE . OK", delay: 1400, status: "ok" },
-  { text: "CONNECTING VECTOR STORE . OK", delay: 1800, status: "ok" },
-  { text: "SYNCING MEMORY CONTEXT .. OK", delay: 2200, status: "ok" },
-  { text: "MOUNTING KNOWLEDGE GRAPH  OK", delay: 2600, status: "ok" },
+  { text: "AUTHENTICATING .......... OK", delay: 600, status: "ok", sound: "ok" },
+  { text: "LOADING VAULT INDEX ..... OK", delay: 1000, status: "ok", sound: "ok" },
+  { text: "INITIALIZING RAG ENGINE . OK", delay: 1400, status: "ok", sound: "ok" },
+  { text: "CONNECTING VECTOR STORE . OK", delay: 1800, status: "ok", sound: "ok" },
+  { text: "SYNCING MEMORY CONTEXT .. OK", delay: 2200, status: "ok", sound: "ok" },
+  { text: "MOUNTING KNOWLEDGE GRAPH  OK", delay: 2600, status: "ok", sound: "ok" },
   { text: "", delay: 3000 },
-  { text: "ALL SYSTEMS NOMINAL", delay: 3300, status: "done" },
-  { text: "WELCOME BACK, OPERATOR.", delay: 3800, status: "done" },
+  { text: "ALL SYSTEMS NOMINAL", delay: 3300, status: "done", sound: "done" },
+  { text: "WELCOME BACK, OPERATOR.", delay: 3800, status: "done", sound: "done" },
 ];
 
 const TOTAL_DURATION = 5600; // ms before fade-out starts
 const FADE_DURATION = 800;  // ms for the fade-out
 
+// ---------------------------------------------------------------------------
+// Synthesized audio — Web Audio API, no external files
+// ---------------------------------------------------------------------------
+
+function getAudioContext(): AudioContext | null {
+  try {
+    return new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+  } catch {
+    return null;
+  }
+}
+
+function playTick(ctx: AudioContext) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(1200, ctx.currentTime);
+  gain.gain.setValueAtTime(0.06, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.06);
+}
+
+function playOk(ctx: AudioContext) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(880, ctx.currentTime);
+  osc.frequency.setValueAtTime(1320, ctx.currentTime + 0.04);
+  gain.gain.setValueAtTime(0.08, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.12);
+}
+
+function playDone(ctx: AudioContext) {
+  // Two-tone chime
+  const osc1 = ctx.createOscillator();
+  const osc2 = ctx.createOscillator();
+  const gain1 = ctx.createGain();
+  const gain2 = ctx.createGain();
+  osc1.connect(gain1);
+  gain1.connect(ctx.destination);
+  osc2.connect(gain2);
+  gain2.connect(ctx.destination);
+
+  osc1.type = "sine";
+  osc1.frequency.setValueAtTime(1047, ctx.currentTime); // C6
+  gain1.gain.setValueAtTime(0.08, ctx.currentTime);
+  gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+  osc1.start(ctx.currentTime);
+  osc1.stop(ctx.currentTime + 0.25);
+
+  osc2.type = "sine";
+  osc2.frequency.setValueAtTime(1568, ctx.currentTime + 0.08); // G6
+  gain2.gain.setValueAtTime(0.001, ctx.currentTime);
+  gain2.gain.setValueAtTime(0.07, ctx.currentTime + 0.08);
+  gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+  osc2.start(ctx.currentTime + 0.08);
+  osc2.stop(ctx.currentTime + 0.35);
+}
+
+function playBoot(ctx: AudioContext) {
+  // Low sweep up — power-on feel
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(200, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.3);
+  gain.gain.setValueAtTime(0.1, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.4);
+}
+
+function playSound(ctx: AudioContext, sound: BootLine["sound"]) {
+  switch (sound) {
+    case "tick": playTick(ctx); break;
+    case "ok": playOk(ctx); break;
+    case "done": playDone(ctx); break;
+    case "boot": playBoot(ctx); break;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 export default function BootSequence({ onComplete }: { onComplete: () => void }) {
   const [visibleLines, setVisibleLines] = useState(0);
   const [fadeOut, setFadeOut] = useState(false);
   const completedRef = useRef(false);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
+    // Lazily create AudioContext on mount (needs user gesture — login click counts)
+    audioCtxRef.current = getAudioContext();
+
     const timers: ReturnType<typeof setTimeout>[] = [];
 
-    // Reveal lines one by one
+    // Reveal lines one by one with sounds
     for (let i = 0; i < BOOT_LINES.length; i++) {
       timers.push(
         setTimeout(() => {
           setVisibleLines(i + 1);
+          if (BOOT_LINES[i].sound && audioCtxRef.current) {
+            playSound(audioCtxRef.current, BOOT_LINES[i].sound);
+          }
         }, BOOT_LINES[i].delay)
       );
     }
@@ -57,10 +159,15 @@ export default function BootSequence({ onComplete }: { onComplete: () => void })
           completedRef.current = true;
           onComplete();
         }
+        // Close audio context
+        audioCtxRef.current?.close().catch(() => {});
       }, TOTAL_DURATION + FADE_DURATION)
     );
 
-    return () => timers.forEach(clearTimeout);
+    return () => {
+      timers.forEach(clearTimeout);
+      audioCtxRef.current?.close().catch(() => {});
+    };
   }, [onComplete]);
 
   return (
