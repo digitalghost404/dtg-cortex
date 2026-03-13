@@ -352,7 +352,7 @@ export default function DiscoverPage() {
   return (
     <div
       className="cortex-bg"
-      style={{ minHeight: "100vh", overflowY: "auto" }}
+      style={{ height: "100vh", overflowY: "auto" }}
     >
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <header

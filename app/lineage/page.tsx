@@ -495,7 +495,7 @@ export default function LineagePage() {
   const activeDays = stats ? daysActive(stats) : 0;
 
   return (
-    <div className="cortex-bg" style={{ minHeight: "100vh", overflowY: "auto" }}>
+    <div className="cortex-bg" style={{ height: "100vh", overflowY: "auto" }}>
       {/* ── Page header ────────────────────────────────────────────────────── */}
       <header
         className="hud-header-rule hud-enter"

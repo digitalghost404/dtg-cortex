@@ -219,7 +219,7 @@ export default function MemoryPage() {
   return (
     <div
       className="cortex-bg"
-      style={{ minHeight: "100vh", overflowY: "auto", overflowX: "hidden" }}
+      style={{ height: "100vh", overflowY: "auto", overflowX: "hidden" }}
     >
       {/* Header */}
       <header
