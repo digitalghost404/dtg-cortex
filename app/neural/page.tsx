@@ -45,8 +45,10 @@ export default function NeuralPage() {
   const { neurons, edges, neuronsByPath, clusterColors } = useNeuralGraph(data);
 
   // Sound effects
-  const { ensureResumed, playActivation, playPulseTravel, playBrainPulse, playCooldown } =
-    useNeuralSounds();
+  const {
+    ensureResumed, playActivation, playPulseTravel, playBrainPulse, playCooldown,
+    startHeartbeat, stopHeartbeat,
+  } = useNeuralSounds();
 
   // Animation
   const { animStateRef, activateNeuron, tick, getPhase } = useNeuralAnimation(neurons, edges);
@@ -72,20 +74,26 @@ export default function NeuralPage() {
   const prevPhaseRef = useRef<string>("idle");
   const pulseParticleSoundRef = useRef(0);
 
-  // Phase transition sound effects
+  // Phase transition sound effects + heartbeat management
   useEffect(() => {
     const interval = setInterval(() => {
       const phase = getPhase();
       const prev = prevPhaseRef.current;
       if (phase !== prev) {
         prevPhaseRef.current = phase;
-        if (phase === "propagating") {
+        if (phase === "idle") {
+          // Resume heartbeat when returning to idle
+          startHeartbeat();
+        } else if (phase === "activating") {
+          // Pause heartbeat during activation — brain pulse takes over
+          stopHeartbeat();
+        } else if (phase === "propagating") {
           playPulseTravel();
         } else if (phase === "cooling") {
           playCooldown();
         }
       }
-      // Play pulse travel sound when new particles spawn (throttled in hook)
+      // Play cinematic whoosh when new pulse particles spawn (throttled in hook)
       const anim = animStateRef.current;
       if (anim) {
         const activeParticles = anim.particles.filter((p) => p.active).length;
@@ -96,7 +104,7 @@ export default function NeuralPage() {
       }
     }, 100);
     return () => clearInterval(interval);
-  }, [getPhase, playPulseTravel, playCooldown, animStateRef]);
+  }, [getPhase, playPulseTravel, playCooldown, startHeartbeat, stopHeartbeat, animStateRef]);
 
   // Handlers
   const handleHover = useCallback(
@@ -113,18 +121,20 @@ export default function NeuralPage() {
   const handleClick = useCallback(
     (neuron: NeuronNode | null) => {
       ensureResumed();
+      startHeartbeat(); // start heartbeat on first user interaction
       setSelectedNeuron((prev) => (prev?.id === neuron?.id ? null : neuron ?? null));
     },
-    [ensureResumed]
+    [ensureResumed, startHeartbeat]
   );
 
   // Wrap submit to ensure audio context is active
   const handleSubmit = useCallback(
     (e?: React.FormEvent) => {
       ensureResumed();
+      startHeartbeat();
       submit(e);
     },
-    [ensureResumed, submit]
+    [ensureResumed, startHeartbeat, submit]
   );
 
   // Derived
