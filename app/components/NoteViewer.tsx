@@ -265,6 +265,7 @@ export default function NoteViewer({ notePath, onClose }: NoteViewerProps) {
   const [note, setNote] = useState<NoteData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // Navigation history: stack of paths, current index
   const [history, setHistory] = useState<string[]>([]);
@@ -356,6 +357,15 @@ export default function NoteViewer({ notePath, onClose }: NoteViewerProps) {
     setViewerWidth((w) => Math.min(600, Math.max(280, w - dx)));
   }
 
+  function handleShare() {
+    if (!note) return;
+    const text = `# ${note.name}\n\n${note.content}`;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
+
   if (!activePath && !notePath) return null;
 
   return (
@@ -394,14 +404,25 @@ export default function NoteViewer({ notePath, onClose }: NoteViewerProps) {
             {activePath ?? ""}
           </span>
 
-          <button
-            className="note-viewer__close"
-            onClick={onClose}
-            aria-label="Close note viewer"
-            title="Close"
-          >
-            &times;
-          </button>
+          <div className="note-viewer__actions">
+            <button
+              className="note-viewer__action-btn"
+              onClick={handleShare}
+              disabled={!note || loading}
+              aria-label="Copy note to clipboard"
+              title={copied ? "Copied!" : "Share"}
+            >
+              {copied ? "\u2713" : "\u21F1"}
+            </button>
+            <button
+              className="note-viewer__action-btn"
+              onClick={onClose}
+              aria-label="Close note viewer"
+              title="Close"
+            >
+              &times;
+            </button>
+          </div>
         </div>
 
         {/* Body */}
