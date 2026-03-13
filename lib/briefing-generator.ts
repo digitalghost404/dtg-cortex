@@ -37,7 +37,7 @@ async function searchTopic(
   topic: BriefingTopic
 ): Promise<{ topic: BriefingTopic; results: WebSearchResult[] }> {
   try {
-    const results = await webSearch(topic.query, 3);
+    const results = await webSearch(topic.query, 5);
     return { topic, results };
   } catch (err) {
     console.error(`[briefing] Search failed for "${topic.label}":`, err);
@@ -55,7 +55,7 @@ function buildPrompt(
   let prompt = `You are a news analyst. Analyze today's news search results grouped by topic and provide a structured briefing.\n\n`;
 
   for (const { topic, results } of topicResults) {
-    prompt += `## ${topic.label}\n`;
+    prompt += `## ${topic.label} (topicId: "${topic.id}")\n`;
     if (results.length === 0) {
       prompt += `No search results available for this topic.\n\n`;
     } else {
@@ -66,7 +66,7 @@ function buildPrompt(
     }
   }
 
-  prompt += `For each topic, write a 2-3 sentence analysis synthesizing the key developments. Then write a 2-3 sentence overall summary connecting themes across all topics.`;
+  prompt += `For each topic, write a 2-3 sentence analysis synthesizing the key developments. Use the exact topicId shown in parentheses for each section. Then write a 2-3 sentence overall summary connecting themes across all topics.`;
 
   return prompt;
 }
@@ -76,7 +76,7 @@ function buildPrompt(
 // ---------------------------------------------------------------------------
 
 const briefingSectionSchema = z.object({
-  topicId: z.string(),
+  topicId: z.enum(["ai-ml", "tech", "cloud-devops", "science-space"]),
   analysis: z.string(),
 });
 
