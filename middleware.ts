@@ -155,7 +155,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // Cron-secret bypass for automated jobs
-  const CRON_API_PATHS = ["/api/sync", "/api/briefing"];
+  const CRON_API_PATHS = ["/api/sync"];
   if (CRON_API_PATHS.includes(pathname) && req.method === "POST") {
     const cronSecret = req.headers.get("x-cron-secret");
     const expected = process.env.CRON_SECRET;

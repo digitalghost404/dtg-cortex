@@ -28,9 +28,28 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(briefing);
   }
 
-  // Default: today, fallback to latest
+  // Default: today, fallback to latest.
+  // Auto-generate only if: (a) no briefings exist at all (first seed), or
+  // (b) today's briefing is missing AND it's past 7 AM EST.
   const today = new Date().toISOString().slice(0, 10);
-  const briefing = (await getBriefing(today)) || (await getLatestBriefing());
+  let briefing = await getBriefing(today);
+  if (!briefing) {
+    const existing = await listBriefingDates();
+    const isFirstEver = existing.length === 0;
+    const nowEST = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+    const isPast7am = nowEST.getHours() >= 7;
+
+    if (isFirstEver || isPast7am) {
+      try {
+        briefing = await generateBriefing();
+      } catch (err) {
+        console.error("[api/briefing] Auto-generation failed:", err);
+      }
+    }
+  }
+  if (!briefing) {
+    briefing = await getLatestBriefing();
+  }
   if (!briefing) {
     return NextResponse.json({ error: "No briefings available" }, { status: 404 });
   }
