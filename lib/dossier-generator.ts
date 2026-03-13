@@ -36,7 +36,7 @@ const dossierSynthesisSchema = z.object({
   agreements: z.array(z.string()).describe("Points where vault and web agree"),
   gaps: z.array(z.string()).describe("Knowledge gaps — what's missing from the vault"),
   recommendations: z.array(z.string()).describe("Suggested next steps or areas to explore"),
-  suggestedTags: z.array(z.string()).max(5).describe("Recommended tags for this dossier, without # prefix"),
+  suggestedTags: z.array(z.string()).describe("Up to 5 recommended tags for this dossier, without # prefix"),
 });
 
 // ---------------------------------------------------------------------------
