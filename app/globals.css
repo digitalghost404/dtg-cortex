@@ -3085,6 +3085,31 @@ body {
   cursor: default;
 }
 
+.note-viewer__editor {
+  flex: 1;
+  width: 100%;
+  padding: 16px;
+  font-family: var(--font-geist-mono, monospace);
+  font-size: 0.8rem;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  overflow-y: auto;
+}
+
+.note-viewer__action-btn--save {
+  color: var(--cyan-mid);
+  border-color: var(--cyan-dim);
+}
+
+.note-viewer__action-btn--save:hover:not(:disabled) {
+  color: var(--cyan-bright);
+  border-color: var(--cyan-mid);
+}
+
 /* ─── Image Drop ───────────────────────────────────────────────────── */
 
 .drop-overlay {

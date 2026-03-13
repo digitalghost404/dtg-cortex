@@ -12,6 +12,8 @@ interface NoteData {
   content: string;
 }
 
+type ViewMode = "read" | "edit";
+
 // ---------------------------------------------------------------------------
 // Markdown renderer with wikilink support
 // ---------------------------------------------------------------------------
@@ -267,6 +269,11 @@ export default function NoteViewer({ notePath, onClose }: NoteViewerProps) {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // Edit mode state
+  const [viewMode, setViewMode] = useState<ViewMode>("read");
+  const [editContent, setEditContent] = useState("");
+  const [saving, setSaving] = useState(false);
+
   // Navigation history: stack of paths, current index
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -307,6 +314,8 @@ export default function NoteViewer({ notePath, onClose }: NoteViewerProps) {
     }
     setLoading(true);
     setError(null);
+    setViewMode("read");
+    setEditContent("");
 
     fetch(`/api/note?path=${encodeURIComponent(activePath)}&full=true`)
       .then((r) => {
@@ -366,6 +375,41 @@ export default function NoteViewer({ notePath, onClose }: NoteViewerProps) {
     });
   }
 
+  function handleEdit() {
+    if (!note) return;
+    setEditContent(note.content);
+    setViewMode("edit");
+  }
+
+  function handleCancelEdit() {
+    setViewMode("read");
+    setEditContent("");
+  }
+
+  async function handleSave() {
+    if (!activePath) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/note", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: activePath, content: editContent }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      // Refresh note data
+      setNote({ name: note?.name ?? "", content: editContent });
+      setViewMode("read");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to save";
+      setError(msg);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (!activePath && !notePath) return null;
 
   return (
@@ -405,23 +449,57 @@ export default function NoteViewer({ notePath, onClose }: NoteViewerProps) {
           </span>
 
           <div className="note-viewer__actions">
-            <button
-              className="note-viewer__action-btn"
-              onClick={handleShare}
-              disabled={!note || loading}
-              aria-label="Copy note to clipboard"
-              title={copied ? "Copied!" : "Share"}
-            >
-              {copied ? "\u2713" : "\u21F1"}
-            </button>
-            <button
-              className="note-viewer__action-btn"
-              onClick={onClose}
-              aria-label="Close note viewer"
-              title="Close"
-            >
-              &times;
-            </button>
+            {viewMode === "edit" ? (
+              <>
+                <button
+                  className="note-viewer__action-btn note-viewer__action-btn--save"
+                  onClick={handleSave}
+                  disabled={saving}
+                  aria-label="Save changes"
+                  title="Save"
+                >
+                  {saving ? "\u22EF" : "\u2713"}
+                </button>
+                <button
+                  className="note-viewer__action-btn"
+                  onClick={handleCancelEdit}
+                  disabled={saving}
+                  aria-label="Cancel editing"
+                  title="Cancel"
+                >
+                  &times;
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  className="note-viewer__action-btn"
+                  onClick={handleEdit}
+                  disabled={!note || loading}
+                  aria-label="Edit note"
+                  title="Edit"
+                >
+                  &#9998;
+                </button>
+                <button
+                  className="note-viewer__action-btn"
+                  onClick={handleShare}
+                  disabled={!note || loading}
+                  aria-label="Copy note to clipboard"
+                  title={copied ? "Copied!" : "Share"}
+                >
+                  {copied ? "\u2713" : "\u21F1"}
+                </button>
+                <button
+                  className="note-viewer__action-btn"
+                  onClick={onClose}
+                  aria-label="Close note viewer"
+                  title="Close"
+                >
+                  &times;
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -462,10 +540,20 @@ export default function NoteViewer({ notePath, onClose }: NoteViewerProps) {
           </div>
         )}
 
-        {!loading && !error && note && (
+        {!loading && !error && note && viewMode === "read" && (
           <MarkdownContent
             markdown={note.content}
             onWikilink={handleWikilink}
+          />
+        )}
+
+        {!loading && !error && note && viewMode === "edit" && (
+          <textarea
+            className="note-viewer__editor"
+            value={editContent}
+            onChange={(e) => setEditContent(e.target.value)}
+            spellCheck={false}
+            autoFocus
           />
         )}
       </div>

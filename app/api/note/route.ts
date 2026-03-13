@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getNote, isSecretPath } from "@/lib/vault";
+import { getNote, isSecretPath, getVaultPath, isServerlessMode } from "@/lib/vault";
 import * as kv from "@/lib/kv";
+import fs from "fs";
+import path from "path";
+import matter from "gray-matter";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -70,6 +73,82 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to patch note";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function PUT(req: NextRequest) {
+  try {
+    const body = await req.json();
+    const { path: notePath, content: newRawContent } = body;
+
+    if (!notePath || typeof newRawContent !== "string") {
+      return NextResponse.json({ error: "path and content required" }, { status: 400 });
+    }
+
+    if (notePath.includes("..")) {
+      return NextResponse.json({ error: "Invalid path" }, { status: 400 });
+    }
+
+    if (isSecretPath(notePath)) {
+      const token = req.cookies.get("cortex-token")?.value;
+      if (!token) {
+        return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+      }
+    }
+
+    const existing = await getNote(notePath);
+    if (!existing) {
+      return NextResponse.json({ error: "Note not found" }, { status: 404 });
+    }
+
+    // Parse the new raw content to extract frontmatter, content, tags, outgoing links
+    const { data, content: parsedContent } = matter(newRawContent);
+    const WIKILINK_RE = /\[\[([^\]]+)\]\]/g;
+    const outgoing: string[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = WIKILINK_RE.exec(parsedContent)) !== null) {
+      outgoing.push(match[1].split(/[|#]/)[0].trim());
+    }
+
+    const tags: string[] = (() => {
+      const raw = data.tags ?? data.tag ?? data.Topics ?? data.topics ?? null;
+      if (!raw) return [];
+      if (Array.isArray(raw)) return raw.map((t: unknown) => {
+        const s = String(t).trim();
+        return s.startsWith("#") ? s : `#${s}`;
+      });
+      if (typeof raw === "string") {
+        return raw.split(/[\s,]+/).map(s => s.trim()).filter(Boolean).map(s => s.startsWith("#") ? s : `#${s}`);
+      }
+      return [];
+    })();
+
+    const words = parsedContent.trim() ? parsedContent.trim().split(/\s+/).length : 0;
+
+    // Update KV store
+    await kv.hset(`vault:note:${notePath}`, {
+      content: parsedContent,
+      rawContent: newRawContent,
+      outgoing: JSON.stringify(outgoing),
+      tags: JSON.stringify(tags),
+      words,
+      size: Buffer.byteLength(newRawContent, "utf8"),
+      modifiedAt: new Date().toISOString(),
+    });
+
+    // Also write to disk if in filesystem mode
+    const vaultPath = getVaultPath();
+    if (vaultPath && !isServerlessMode()) {
+      const fullPath = path.resolve(vaultPath, notePath);
+      if (fullPath.startsWith(path.resolve(vaultPath))) {
+        fs.writeFileSync(fullPath, newRawContent, "utf8");
+      }
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to save note";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

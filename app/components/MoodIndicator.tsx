@@ -62,7 +62,7 @@ export default function MoodIndicator() {
           position: "fixed",
           top: 56,
           right: 10,
-          zIndex: 2,
+          zIndex: 1,
           display: "flex",
           alignItems: "center",
           gap: "6px",
