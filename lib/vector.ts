@@ -118,7 +118,7 @@ export async function resetIndex(): Promise<void> {
 }
 
 /**
- * Fetch all vectors with metadata (paginated). Used by clusters, digest, links.
+ * Fetch all vectors with metadata (paginated). Used by clusters and links.
  */
 export async function fetchAllVectors(): Promise<
   Array<{ id: string; vector: number[]; metadata: VectorMetadata }>

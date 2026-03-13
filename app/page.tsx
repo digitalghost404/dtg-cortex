@@ -752,24 +752,6 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
               </Link>
 
               <Link
-                href="/graph"
-                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-              >
-                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9671;</span>
-                GRAPH
-              </Link>
-
-              <Link
-                href="/ambient"
-                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-              >
-                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9689;</span>
-                AMBIENT
-              </Link>
-
-              <Link
                 href="/lineage"
                 className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
                 style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
@@ -785,15 +767,6 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
               >
                 <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9678;</span>
                 CLUSTERS
-              </Link>
-
-              <Link
-                href="/digest"
-                className="btn-secondary flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-sm"
-                style={{ fontFamily: "var(--font-geist-mono, monospace)", letterSpacing: "0.1em", fontSize: "0.6rem" }}
-              >
-                <span style={{ fontSize: "0.55rem", opacity: 0.7 }}>&#9670;</span>
-                DIGEST
               </Link>
 
               <Link
@@ -896,11 +869,8 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
                   { href: "/tags",     icon: "\u2606", label: "TAGS"     },
                   { href: "/discover", icon: "\u2740", label: "DISCOVER" },
                   { href: "/notes/new", icon: "+",     label: "NEW NOTE" },
-                  { href: "/graph",    icon: "\u25c7", label: "GRAPH"    },
-                  { href: "/ambient",  icon: "\u25c9", label: "AMBIENT"  },
                   { href: "/lineage",  icon: "\u25c8", label: "LINEAGE"  },
                   { href: "/clusters", icon: "\u25ce", label: "CLUSTERS" },
-                  { href: "/digest",   icon: "\u25c6", label: "DIGEST"   },
                   { href: "/memory",   icon: "\u25c9", label: "MEMORY"   },
                   { href: "/settings", icon: "\u2699", label: "SETTINGS" },
                 ] as const

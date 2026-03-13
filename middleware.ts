@@ -61,7 +61,6 @@ const PUBLIC_PAGES = ["/", "/vault", "/tags", "/discover"];
 
 // API routes that guests can call (metadata only, no private note content)
 const PUBLIC_API_EXACT = [
-  "/api/graph",
   "/api/vault",
   "/api/vault-dna",
   "/api/chat/guest",

@@ -16,9 +16,8 @@ Most note apps let you write. Cortex lets you *think*.
 |----------------|-------------|
 | Searching your vault with Ctrl+F and hope | Ask a question in plain language — Cortex retrieves the right notes and synthesizes an answer |
 | Forgetting what you wrote six months ago | Every note is indexed and retrievable by meaning, not just keywords |
-| Notes that exist in isolation | A live knowledge graph shows how every idea connects to every other |
-| No idea which topics are dense and which are thin | Tag browser and semantic clusters show your vault's regions at a glance |
-| Manually reviewing stale notes | Ambient mode surfaces forgotten notes, quotes, stats, and "on this day" flashbacks |
+| Notes that exist in isolation | Tag browser shows how ideas group and connect |
+| No idea which topics are dense and which are thin | Tag browser shows your vault's regions at a glance with note counts per tag |
 | Never stumbling on old ideas | Discover mode serves random notes — rediscover what you forgot you knew |
 | Missing connections you should have made | Link discovery finds notes that are semantically related but not yet linked |
 
@@ -45,12 +44,8 @@ Most note apps let you write. Cortex lets you *think*.
 | **Discover** | Random note surfacing — tap shuffle to rediscover forgotten ideas with content previews, tags, and connection counts |
 | **Note editor** | Create new notes from the browser — folder picker, tag input, markdown editor with live preview |
 | **Vault diagnostics** | Health indicators, orphan detection, link stats, and a DNA-style fingerprint of your vault |
-| **Knowledge graph** | Interactive d3-force canvas with live file watcher integration (local dev) |
-| **Topic clusters** | 2D scatter plot of your notes grouped by semantic similarity |
 | **Note lineage** | Which notes keep surfacing in your queries? Lineage tracks frequency and recency |
 | **Link discovery** | Surfaces unlinked notes that should be connected based on content overlap |
-| **Ambient mode** | A lean-back display that cycles through quotes, stats, forgotten notes, tag clouds, and "on this day" memories |
-| **Digest** | AI-generated summary of vault activity and notable connections |
 
 ### Personalisation
 - **Personality sliders** — adjust formality, response length, challenge level, and creativity
@@ -68,7 +63,7 @@ Cortex is designed to be deployed on the public internet as a personal tool.
 - **TOTP replay prevention** — atomic set-if-not-exists prevents reuse of one-time codes
 - **CSRF protection** — origin validation on all mutating requests
 - **Guest mode** — unauthenticated visitors can chat (rate-limited via Haiku), browse tags, discover random notes, and view vault diagnostics (read-only, zero API cost on non-chat routes)
-- **Protected routes** — full chat, web search, TTS, sessions, memory, ambient, lineage, digest, graph, clusters, and settings require authentication
+- **Protected routes** — full chat, web search, TTS, sessions, memory, lineage, clusters, and settings require authentication
 - **Security headers** — CSP, HSTS, X-Frame-Options DENY, X-Content-Type-Options, Referrer-Policy, Permissions-Policy
 - **Edge-compatible token revocation** — middleware checks JWT revocation via Upstash REST API before hitting any route
 
@@ -121,10 +116,8 @@ Mode is determined automatically by the presence of `KV_REST_API_URL`.
 | KV / State | Upstash Redis |
 | TTS | ElevenLabs |
 | Web search | Tavily |
-| Graph | d3-force |
 | Auth | jose (JWT), bcrypt, otplib (TOTP), qrcode |
 | Styling | Tailwind CSS v4 |
-| Vault watch | chokidar (local dev only) |
 
 ---
 
@@ -206,10 +199,7 @@ For **local development**, the app reads directly from the filesystem at `VAULT_
 | `/tags` | Guest | Tag browser — explore every tag and its notes |
 | `/discover` | Guest | Random note discovery — shuffle through your vault |
 | `/notes/new` | Required | Note editor — create new notes with folder picker and tags |
-| `/graph` | Required | Interactive knowledge graph |
 | `/clusters` | Required | Semantic topic clusters |
-| `/ambient` | Required | Ambient display mode |
-| `/digest` | Required | AI-generated vault digest |
 | `/lineage` | Required | Note reference history |
 | `/memory` | Required | Memory management |
 | `/settings` | Required | AI personality sliders |
