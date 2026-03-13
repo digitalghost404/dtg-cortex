@@ -54,7 +54,7 @@ Most note apps let you write. Cortex lets you *think*.
 | **File explorer** | Sidebar drawer with full folder tree, expand/collapse, filter by name or tag, note counts per folder, and one-click open in NoteViewer |
 | **Tag browser** | Browse every tag in your vault, see note counts, expand to view tagged notes — filterable and mobile-friendly |
 | **Discover** | Random note surfacing — tap shuffle to rediscover forgotten ideas with content previews, tags, and connection counts |
-| **Note editor** | Create new notes from the browser — folder picker (with new folder creation), tag input with real-time AI suggestions, markdown editor with live preview |
+| **Note editor** | Create new notes from the browser — folder picker (with new folder creation), tags input with real-time AI suggestions, markdown editor with live preview |
 | **Vault diagnostics** | Health indicators, orphan detection, link stats, sync status with one-click sync trigger, and a DNA-style fingerprint of your vault |
 | **Topic clusters** | 2D scatter plot of your notes grouped by semantic similarity — pan, zoom, search, and inspect |
 | **Note lineage** | Which notes keep surfacing in your queries? Lineage tracks frequency and recency |
