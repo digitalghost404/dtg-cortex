@@ -74,7 +74,7 @@ Most note apps let you write. Cortex lets you *think*.
 ### Scheduled Sync
 - **Watch mode** — `npm run sync:watch` does an initial sync, then watches your vault for changes and incrementally syncs on save (1s debounce via chokidar)
 - **Sync API** — `POST /api/sync` triggers a full sync from the web UI or external cron. Accepts JWT auth or a `x-cron-secret` header
-- **Vercel cron** — automatic sync every 6 hours via `vercel.json` cron config
+- **Vercel cron** — automatic daily sync via `vercel.json` cron config
 - **Sync from UI** — "Sync Now" button on the vault diagnostics page with "last synced" indicator
 
 ### Experience
@@ -312,7 +312,7 @@ Guest exploration routes (vault, tags, discover, shared notes) are read-only and
 4. Deploy — the app uses serverless functions with Edge middleware
 5. Run `npm run sync` locally (or in CI) to push vault content to Upstash
 
-The filesystem is read-only on Vercel. All state (sessions, memory, personality, auth config, lineage, shares) is stored in Upstash Redis. Vault content and embeddings are pushed via `npm run sync`. The Vercel cron job triggers `/api/sync` every 6 hours to re-index any pending changes.
+The filesystem is read-only on Vercel. All state (sessions, memory, personality, auth config, lineage, shares) is stored in Upstash Redis. Vault content and embeddings are pushed via `npm run sync`. The Vercel cron job triggers `/api/sync` daily at 6 AM UTC to re-index any pending changes.
 
 ---
 
