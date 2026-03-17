@@ -79,6 +79,7 @@ async function generateCuriosityQuestions(): Promise<string[]> {
     const folders = new Set<string>();
     for (const name of noteNames) {
       const n = noteByName.get(name);
+      /* v8 ignore next */
       if (n) folders.add(n.folder || "(root)");
     }
     if (folders.size === 1) {

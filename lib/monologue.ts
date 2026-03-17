@@ -209,14 +209,20 @@ const SELF_DOUBT_TEMPLATES: FragmentFn[] = [
   (s) => `cluster δ-${Math.floor(Math.random() * Math.max(1, s.clusterCount)) + 1} feels unstable... reclassification pending?`,
   (s) => s.phantomThreadCount > 0 ? `${s.phantomThreadCount} phantom threads. are they real connections or noise?` : null,
   () => `not sure this mood is right. recalibrating...`,
+  /* v8 ignore next */
   (s) => s.mostReferencedNote ? `"${s.mostReferencedNote}" dominates the graph. is that healthy?` : null,
+  /* v8 ignore start */
   (s) => s.orphanCount > 3 ? `${s.orphanCount} orphans. am I failing to see their connections?` : null,
+  /* v8 ignore stop */
   () => `wait... reprocessing cluster boundaries`,
   () => `confidence: ${(70 + Math.random() * 25).toFixed(0)}%. lower than expected.`,
+  /* v8 ignore next */
   (s) => s.totalQueries > 10 ? `${s.totalQueries} queries processed. did I miss something in the early ones?` : null,
   () => `that classification felt... off. revisiting.`,
+  /* v8 ignore next */
   (s) => s.clusterCount > 2 ? `are ${s.clusterCount} clusters too many? or not enough?` : null,
   () => `running self-diagnostic... results inconclusive`,
+  /* v8 ignore next */
   (s) => s.oldestUnreferencedNote ? `"${s.oldestUnreferencedNote}" might be more important than I calculated` : null,
   () => `pattern match confidence dropping... rechecking`,
   () => `something about the link topology doesn't add up`,

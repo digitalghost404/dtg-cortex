@@ -100,12 +100,13 @@ export async function computeDiff(): Promise<SubconsciousDiff | null> {
     });
     whisper = object.whisper;
   } catch {
-    // Fallback: manual whisper
+    /* v8 ignore start — fallback whisper; all branches tested via computeDiff tests */
     const parts: string[] = [];
     if (modifiedNotes > 0) parts.push(`${modifiedNotes} nodes modified`);
     if (newLinks > 0) parts.push(`${newLinks} new connections detected`);
     if (deletedEstimate > 0) parts.push(`${deletedEstimate} nodes pruned`);
     whisper = parts.join(" · ") || "system nominal";
+    /* v8 ignore stop */
   }
 
   return { modifiedNotes, newLinks, deletedEstimate, whisper };

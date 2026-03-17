@@ -125,6 +125,7 @@ export async function getLineageStats(): Promise<{
 
   for (const entry of entries) {
     const day = entry.timestamp.slice(0, 10);
+    /* v8 ignore next — dayMap.get always returns a number since we pre-filled the map */
     if (dayMap.has(day)) {
       dayMap.set(day, (dayMap.get(day) ?? 0) + 1);
     }

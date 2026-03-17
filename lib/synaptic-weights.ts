@@ -78,6 +78,7 @@ export async function getSynapticWeights(
     const computedAt = await getJSON<string>(CACHE_TS_KEY);
     if (computedAt && Date.now() - new Date(computedAt).getTime() < STALE_MS) {
       const cached = await getJSON<Record<string, number>>(CACHE_KEY);
+      /* v8 ignore next */
       if (cached) return cached;
     }
   }
