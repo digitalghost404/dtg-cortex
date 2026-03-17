@@ -24,6 +24,9 @@
 # misc
 .DS_Store
 *.pem
+*.bak
+*.tmp
+*.log
 Thumbs.db
 Desktop.ini
 
@@ -56,11 +59,35 @@ next-env.d.ts
 *.swp
 *.swo
 *~
+.project
+.settings/
+*.sublime-project
+*.sublime-workspace
 
 # claude code
 .claude/
+
+# AI-generated vault exports (double-extension artifacts)
+CLAUDE.md.md
 
 # OS
 .Spotlight-V100
 .Trashes
 ehthumbs.db
+.fuse_hidden*
+.nfs*
+
+# turbo
+.turbo/
+
+# storybook
+storybook-static/
+
+# playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# sentry
+.sentryclirc
