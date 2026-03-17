@@ -12,7 +12,7 @@
     "sync": "npx tsx scripts/sync.ts",
     "sync:watch": "npx tsx scripts/sync.ts --watch",
     "auto-tag": "npx tsx scripts/auto-tag.ts",
-    "sync:pull": "npx tsx scripts/sync-from-redis.ts"
+    "sync:pull": "set -a && . ./.env.local && set +a && npx tsx scripts/sync-from-redis.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.58",
