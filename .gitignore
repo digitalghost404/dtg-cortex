@@ -19,10 +19,13 @@
 
 # production
 /build
+/dist
 
 # misc
 .DS_Store
 *.pem
+Thumbs.db
+Desktop.ini
 
 # debug
 npm-debug.log*
@@ -30,12 +33,15 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files
+.env
+.env.*
+!.env.local.example
 
 # cortex runtime data
 .cortex-*.json
 .cortex-index/
+.cortex-kv/
 
 # vercel
 .vercel
@@ -43,3 +49,18 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# claude code
+.claude/
+
+# OS
+.Spotlight-V100
+.Trashes
+ehthumbs.db
