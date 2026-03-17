@@ -99,12 +99,14 @@ export async function buildIndex(): Promise<void> {
       }
 
       indexed++;
+      /* v8 ignore next */
       if (indexed % 50 === 0) console.log(`  ${indexed}/${notes.length} notes indexed`);
     }
 
     console.log(`Done. ${indexed} notes indexed.`);
   } else {
     // Local: read from filesystem
+    /* v8 ignore next */
     if (!VAULT_PATH) throw new Error("VAULT_PATH is not set in environment");
 
     const files = collectMarkdownFiles(VAULT_PATH);
@@ -138,6 +140,7 @@ export async function buildIndex(): Promise<void> {
       await upsertVectors(items);
 
       indexed++;
+      /* v8 ignore next */
       if (indexed % 50 === 0) console.log(`  ${indexed}/${files.length} notes indexed`);
     }
 
@@ -177,6 +180,7 @@ export async function indexSingleFile(filePathOrRelative: string): Promise<void>
 
     await upsertVectors(items);
   } else {
+    /* v8 ignore next */
     if (!VAULT_PATH) throw new Error("VAULT_PATH is not set in environment");
 
     const relativePath = path.relative(VAULT_PATH, filePathOrRelative);

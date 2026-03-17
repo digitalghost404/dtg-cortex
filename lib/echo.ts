@@ -73,6 +73,7 @@ export async function findEcho(query: string): Promise<MemoryEchoMatch | null> {
     if (pastQueries.length >= MAX_PAST_QUERIES) break;
   }
 
+  /* v8 ignore next 2 -- defensive guard; structurally unreachable when entries.length > 0 */
   if (pastQueries.length === 0) return null;
 
   // Embed the new query

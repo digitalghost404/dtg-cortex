@@ -105,6 +105,7 @@ export async function generateBriefing(): Promise<Briefing | null> {
     TOPICS.map((t) => searchTopic(t))
   );
 
+  /* v8 ignore next 4 — searchTopic catches its own errors, so allSettled never rejects */
   const topicResults = searchResults.map((r, i) =>
     r.status === "fulfilled"
       ? r.value
