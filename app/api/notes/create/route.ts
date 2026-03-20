@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs/promises";
 import * as kv from "@/lib/kv";
 import { isServerlessMode, getVaultPath } from "@/lib/vault";
+import { wikilinkTarget } from "@/lib/text-utils";
 
 interface CreateNoteRequest {
   title: string;
@@ -122,7 +123,7 @@ export async function POST(req: NextRequest) {
     const wikiRe = /\[\[([^\]]+)\]\]/g;
     let match: RegExpExecArray | null;
     while ((match = wikiRe.exec(content)) !== null) {
-      const target = match[1].split(/[|#]/)[0].trim();
+      const target = wikilinkTarget(match[1]);
       if (target) outgoing.push(target);
     }
 

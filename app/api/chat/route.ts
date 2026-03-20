@@ -106,12 +106,12 @@ export async function POST(req: Request) {
       : webBlock;
   }
 
-  // --- Personality ---
-  const personality = await loadPersonality();
+  // --- Personality + Memory context (parallel) ---
+  const [personality, memoryContext] = await Promise.all([
+    loadPersonality(),
+    getMemoryContext(),
+  ]);
   const personalityPrompt = personalityToPrompt(personality);
-
-  // --- Memory context ---
-  const memoryContext = await getMemoryContext();
   const memorySection = memoryContext ? `\n\n${memoryContext}` : "";
 
   // --- Circadian personality modifier ---
@@ -240,33 +240,29 @@ ${personalityPrompt}${memorySection}${circadianSection}`;
 
             await saveSession(session);
 
-            // Extract memories from user message
-            try {
-              await extractMemories(userQuery, sessionId ?? "unknown");
-            } catch (memErr) {
-              console.error("[chat onFinish memory extract]", memErr);
-            }
+            // Extract memories and save lineage concurrently — both are
+            // best-effort background work that must not block the response.
+            extractMemories(userQuery, sessionId ?? "unknown").catch((memErr) =>
+              console.error("[chat onFinish memory extract]", memErr)
+            );
 
-            // Save lineage entry
-            try {
-              await saveLineageEntry({
-                id: crypto.randomUUID(),
-                timestamp: new Date().toISOString(),
-                sessionId: sessionId ?? "",
-                query: userQuery,
-                sourceNotes: sources.map((s) => ({
-                  name: s.name,
-                  path: s.path,
-                  score: s.score,
-                })),
-                webSources:
-                  webResults.length > 0
-                    ? webResults.map((r) => ({ title: r.title, url: r.url }))
-                    : undefined,
-              });
-            } catch (lineageErr) {
-              console.error("[chat onFinish lineage save]", lineageErr);
-            }
+            saveLineageEntry({
+              id: crypto.randomUUID(),
+              timestamp: new Date().toISOString(),
+              sessionId: sessionId ?? "",
+              query: userQuery,
+              sourceNotes: sources.map((s) => ({
+                name: s.name,
+                path: s.path,
+                score: s.score,
+              })),
+              webSources:
+                webResults.length > 0
+                  ? webResults.map((r) => ({ title: r.title, url: r.url }))
+                  : undefined,
+            }).catch((lineageErr) =>
+              console.error("[chat onFinish lineage save]", lineageErr)
+            );
           } catch (err) {
             console.error("[chat onFinish session save]", err);
           }

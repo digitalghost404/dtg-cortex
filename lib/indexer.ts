@@ -10,11 +10,10 @@ import {
 } from "./vector";
 import type { VectorMetadata } from "./vector";
 import { getAllNotes, isServerlessMode, isSecretPath } from "./vault";
+import { chunkText } from "./text-utils";
 
 const VAULT_PATH = process.env.VAULT_PATH!;
 const VOYAGE_API_KEY = process.env.VOYAGE_API_KEY!;
-const CHUNK_SIZE = 500; // words per chunk
-const CHUNK_OVERLAP = 50;
 
 async function embedTexts(inputs: string[]): Promise<number[][]> {
   const res = await fetch("https://api.voyageai.com/v1/embeddings", {
@@ -32,19 +31,6 @@ async function embedTexts(inputs: string[]): Promise<number[][]> {
 
   const json = (await res.json()) as { data: { embedding: number[] }[] };
   return json.data.map((d) => d.embedding);
-}
-
-function chunkText(text: string): string[] {
-  const words = text.split(/\s+/);
-  const chunks: string[] = [];
-
-  for (let i = 0; i < words.length; i += CHUNK_SIZE - CHUNK_OVERLAP) {
-    const chunk = words.slice(i, i + CHUNK_SIZE).join(" ");
-    if (chunk.trim().length > 0) chunks.push(chunk);
-    if (i + CHUNK_SIZE >= words.length) break;
-  }
-
-  return chunks;
 }
 
 function collectMarkdownFiles(dir: string): string[] {

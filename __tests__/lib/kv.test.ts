@@ -663,10 +663,11 @@ describe("Redis mode (dynamic import)", () => {
     expect(shared.redis!.hdel).toHaveBeenCalledWith("h", "f1", "f2");
   });
 
-  it("sadd calls redis.sadd once per member in Redis mode", async () => {
+  it("sadd calls redis.sadd once with all members batched", async () => {
     const { mod } = await loadRedisKv();
     await mod.sadd("s", "a", "b");
-    expect(shared.redis!.sadd).toHaveBeenCalledTimes(2);
+    expect(shared.redis!.sadd).toHaveBeenCalledTimes(1);
+    expect(shared.redis!.sadd).toHaveBeenCalledWith("s", "a", "b");
   });
 
   it("smembers delegates to redis.smembers in Redis mode", async () => {

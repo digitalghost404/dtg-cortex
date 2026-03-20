@@ -6,23 +6,7 @@ import type { VaultStats } from "@/app/api/vault/route";
 import LinkDiscovery from "@/app/components/LinkDiscovery";
 import { useAuth } from "@/app/components/AuthProvider";
 import GuestNav from "@/app/components/GuestNav";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function relativeTime(isoStr: string): string {
-  const diff = Date.now() - new Date(isoStr).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  if (days === 1) return "yesterday";
-  if (days < 7) return `${days}d ago`;
-  return new Date(isoStr).toLocaleDateString();
-}
+import { relativeTime } from "@/lib/time-utils";
 
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";

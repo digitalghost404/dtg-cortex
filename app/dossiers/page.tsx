@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/app/components/AuthProvider";
+import { relativeTime } from "@/lib/time-utils";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,23 +49,6 @@ interface DossierSummary {
   savedToVault: boolean;
   vaultFindingCount: number;
   webFindingCount: number;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function relativeTime(isoStr: string): string {
-  const diff = Date.now() - new Date(isoStr).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  if (days === 1) return "yesterday";
-  if (days < 7) return `${days}d ago`;
-  return new Date(isoStr).toLocaleDateString();
 }
 
 // ---------------------------------------------------------------------------

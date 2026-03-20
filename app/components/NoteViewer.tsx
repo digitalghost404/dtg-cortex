@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 
 interface NoteViewerProps {
   notePath: string | null;
   onClose: () => void;
+  fullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 interface NoteData {
@@ -263,7 +266,7 @@ function DragHandle({ onDrag }: DragHandleProps) {
 // NoteViewer
 // ---------------------------------------------------------------------------
 
-export default function NoteViewer({ notePath, onClose }: NoteViewerProps) {
+export default function NoteViewer({ notePath, onClose, fullscreen = false, onToggleFullscreen }: NoteViewerProps) {
   const [note, setNote] = useState<NoteData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -281,6 +284,37 @@ export default function NoteViewer({ notePath, onClose }: NoteViewerProps) {
   // Viewer panel width (controlled by drag)
   const [viewerWidth, setViewerWidth] = useState(400);
 
+  // Portal target – only available after hydration (SSR-safe)
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+  useEffect(() => { setPortalTarget(document.body); }, []);
+
+  // Escape in fullscreen: collapse to sidebar (or close if no toggle available)
+  // Skip if actively editing to avoid losing unsaved work
+  useEffect(() => {
+    if (!fullscreen) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && viewMode !== "edit") {
+        onToggleFullscreen ? onToggleFullscreen() : onClose();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [fullscreen, viewMode, onClose, onToggleFullscreen]);
+
+  // Lock body scroll when fullscreen overlay is open
+  useEffect(() => {
+    if (!fullscreen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [fullscreen]);
+
+  // Focus the fullscreen panel when it opens
+  const fullscreenPanelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (fullscreen) fullscreenPanelRef.current?.focus();
+  }, [fullscreen]);
+
   // When the external notePath changes (citation click), push to history.
   // We use a ref for historyIndex inside the setter to avoid stale closure.
   const historyIndexRef = useRef(historyIndex);
@@ -288,19 +322,20 @@ export default function NoteViewer({ notePath, onClose }: NoteViewerProps) {
 
   useEffect(() => {
     if (!notePath) return;
+    const idx = historyIndexRef.current;
+    let didPush = false;
     setHistory((prev) => {
-      const idx = historyIndexRef.current;
       // If navigating to the same note, do nothing
       if (prev[idx] === notePath) return prev;
       // Truncate forward history, push new entry
+      didPush = true;
       const next = prev.slice(0, idx + 1);
       next.push(notePath);
       return next;
     });
-    setHistoryIndex((prev) => {
-      if (history[prev] === notePath) return prev;
-      return prev + 1;
-    });
+    if (didPush) {
+      setHistoryIndex(idx + 1);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notePath]);
 
@@ -312,12 +347,15 @@ export default function NoteViewer({ notePath, onClose }: NoteViewerProps) {
       setNote(null);
       return;
     }
+    const controller = new AbortController();
     setLoading(true);
     setError(null);
     setViewMode("read");
     setEditContent("");
 
-    fetch(`/api/note?path=${encodeURIComponent(activePath)}&full=true`)
+    fetch(`/api/note?path=${encodeURIComponent(activePath)}&full=true`, {
+      signal: controller.signal,
+    })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json() as Promise<NoteData>;
@@ -327,10 +365,13 @@ export default function NoteViewer({ notePath, onClose }: NoteViewerProps) {
         setLoading(false);
       })
       .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
         const msg = err instanceof Error ? err.message : "Failed to load note";
         setError(msg);
         setLoading(false);
       });
+
+    return () => controller.abort();
   }, [activePath]);
 
   // Wikilink navigation: push the linked note onto the history
@@ -340,14 +381,15 @@ export default function NoteViewer({ notePath, onClose }: NoteViewerProps) {
       // path used in the vault by appending ".md". The API resolves via the
       // vault root, so we just pass the bare name with extension.
       const linkedPath = `${target}.md`;
+      const idx = historyIndexRef.current;
       setHistory((prev) => {
-        const next = prev.slice(0, historyIndex + 1);
+        const next = prev.slice(0, idx + 1);
         next.push(linkedPath);
         return next;
       });
-      setHistoryIndex((prev) => prev + 1);
+      setHistoryIndex(idx + 1);
     },
-    [historyIndex]
+    [] // no deps needed — historyIndexRef.current is always current
   );
 
   const canBack = historyIndex > 0;
@@ -412,151 +454,200 @@ export default function NoteViewer({ notePath, onClose }: NoteViewerProps) {
 
   if (!activePath && !notePath) return null;
 
-  return (
-    <>
-      <DragHandle onDrag={handleDrag} />
-      <div
-        className="split-pane__viewer"
-        style={{ width: viewerWidth }}
-        role="complementary"
-        aria-label="Note viewer"
-      >
-        {/* Header */}
-        <div className="note-viewer__header">
-          <div className="note-viewer__nav">
+  const headerContent = (
+    <div className="note-viewer__header">
+      <div className="note-viewer__nav">
+        <button
+          className="note-viewer__nav-btn"
+          onClick={handleBack}
+          disabled={!canBack}
+          aria-label="Navigate back"
+          title="Back"
+        >
+          &larr;
+        </button>
+        <button
+          className="note-viewer__nav-btn"
+          onClick={handleForward}
+          disabled={!canForward}
+          aria-label="Navigate forward"
+          title="Forward"
+        >
+          &rarr;
+        </button>
+      </div>
+
+      <span className="note-viewer__path" title={activePath ?? ""}>
+        {activePath ?? ""}
+      </span>
+
+      <div className="note-viewer__actions">
+        {viewMode === "edit" ? (
+          <>
             <button
-              className="note-viewer__nav-btn"
-              onClick={handleBack}
-              disabled={!canBack}
-              aria-label="Navigate back"
-              title="Back"
+              className="note-viewer__action-btn note-viewer__action-btn--save"
+              onClick={handleSave}
+              disabled={saving}
+              aria-label="Save changes"
+              title="Save"
             >
-              &larr;
+              {saving ? "\u22EF" : "\u2713"}
             </button>
             <button
-              className="note-viewer__nav-btn"
-              onClick={handleForward}
-              disabled={!canForward}
-              aria-label="Navigate forward"
-              title="Forward"
+              className="note-viewer__action-btn"
+              onClick={handleCancelEdit}
+              disabled={saving}
+              aria-label="Cancel editing"
+              title="Cancel"
             >
-              &rarr;
+              &times;
             </button>
-          </div>
-
-          <span className="note-viewer__path" title={activePath ?? ""}>
-            {activePath ?? ""}
-          </span>
-
-          <div className="note-viewer__actions">
-            {viewMode === "edit" ? (
-              <>
-                <button
-                  className="note-viewer__action-btn note-viewer__action-btn--save"
-                  onClick={handleSave}
-                  disabled={saving}
-                  aria-label="Save changes"
-                  title="Save"
-                >
-                  {saving ? "\u22EF" : "\u2713"}
-                </button>
-                <button
-                  className="note-viewer__action-btn"
-                  onClick={handleCancelEdit}
-                  disabled={saving}
-                  aria-label="Cancel editing"
-                  title="Cancel"
-                >
-                  &times;
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  className="note-viewer__action-btn"
-                  onClick={handleEdit}
-                  disabled={!note || loading}
-                  aria-label="Edit note"
-                  title="Edit"
-                >
-                  &#9998;
-                </button>
-                <button
-                  className="note-viewer__action-btn"
-                  onClick={handleShare}
-                  disabled={!note || loading}
-                  aria-label="Copy note to clipboard"
-                  title={copied ? "Copied!" : "Share"}
-                >
-                  {copied ? "\u2713" : "\u21F1"}
-                </button>
-                <button
-                  className="note-viewer__action-btn"
-                  onClick={onClose}
-                  aria-label="Close note viewer"
-                  title="Close"
-                >
-                  &times;
-                </button>
-              </>
+          </>
+        ) : (
+          <>
+            <button
+              className="note-viewer__action-btn"
+              onClick={handleEdit}
+              disabled={!note || loading}
+              aria-label="Edit note"
+              title="Edit"
+            >
+              &#9998;
+            </button>
+            <button
+              className="note-viewer__action-btn"
+              onClick={handleShare}
+              disabled={!note || loading}
+              aria-label="Copy note to clipboard"
+              title={copied ? "Copied!" : "Share"}
+            >
+              {copied ? "\u2713" : "\u21F1"}
+            </button>
+            {onToggleFullscreen && (
+              <button
+                className="note-viewer__action-btn"
+                onClick={onToggleFullscreen}
+                aria-label={fullscreen ? "Collapse to sidebar" : "Open full screen"}
+                title={fullscreen ? "Collapse" : "Expand"}
+              >
+                {fullscreen ? "\u2913" : "\u2922"}
+              </button>
             )}
-          </div>
-        </div>
-
-        {/* Body */}
-        {loading && (
-          <div
-            className="flex items-center gap-3 px-4 py-6"
-            aria-live="polite"
-            aria-busy="true"
-          >
-            <div className="scan-loader">
-              <div className="scan-loader__bar" />
-              <div className="scan-loader__bar" />
-              <div className="scan-loader__bar" />
-              <div className="scan-loader__bar" />
-              <div className="scan-loader__bar" />
-            </div>
-            <span
-              style={{
-                fontFamily: "var(--font-geist-mono, monospace)",
-                fontSize: "0.65rem",
-                letterSpacing: "0.12em",
-                color: "var(--cyan-mid)",
-              }}
+            <button
+              className="note-viewer__action-btn"
+              onClick={onClose}
+              aria-label="Close note viewer"
+              title="Close"
             >
-              LOADING NOTE...
-            </span>
-          </div>
-        )}
-
-        {!loading && error && (
-          <div
-            className="note-viewer__content"
-            style={{ color: "var(--text-muted)", fontStyle: "italic" }}
-            role="alert"
-          >
-            {error}
-          </div>
-        )}
-
-        {!loading && !error && note && viewMode === "read" && (
-          <MarkdownContent
-            markdown={note.content}
-            onWikilink={handleWikilink}
-          />
-        )}
-
-        {!loading && !error && note && viewMode === "edit" && (
-          <textarea
-            className="note-viewer__editor"
-            value={editContent}
-            onChange={(e) => setEditContent(e.target.value)}
-            spellCheck={false}
-            autoFocus
-          />
+              &times;
+            </button>
+          </>
         )}
       </div>
+    </div>
+  );
+
+  const bodyContent = (
+    <>
+      {loading && (
+        <div
+          className="flex items-center gap-3 px-4 py-6"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="scan-loader">
+            <div className="scan-loader__bar" />
+            <div className="scan-loader__bar" />
+            <div className="scan-loader__bar" />
+            <div className="scan-loader__bar" />
+            <div className="scan-loader__bar" />
+          </div>
+          <span
+            style={{
+              fontFamily: "var(--font-geist-mono, monospace)",
+              fontSize: "0.65rem",
+              letterSpacing: "0.12em",
+              color: "var(--cyan-mid)",
+            }}
+          >
+            LOADING NOTE...
+          </span>
+        </div>
+      )}
+
+      {!loading && error && (
+        <div
+          className="note-viewer__content"
+          style={{ color: "var(--text-muted)", fontStyle: "italic" }}
+          role="alert"
+        >
+          {error}
+        </div>
+      )}
+
+      {!loading && !error && note && viewMode === "read" && (
+        <MarkdownContent
+          markdown={note.content}
+          onWikilink={handleWikilink}
+        />
+      )}
+
+      {!loading && !error && note && viewMode === "edit" && (
+        <textarea
+          className="note-viewer__editor"
+          value={editContent}
+          onChange={(e) => setEditContent(e.target.value)}
+          spellCheck={false}
+          autoFocus
+        />
+      )}
+    </>
+  );
+
+  // Fullscreen: portal overlay to document.body, hide the sidebar shell
+  // Sidebar: render inline in the split-pane
+  const fullscreenOverlay = fullscreen && portalTarget
+    ? createPortal(
+        <div
+          className="note-viewer-fullscreen"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Note viewer"
+          onClick={() => (onToggleFullscreen ? onToggleFullscreen() : onClose())}
+        >
+          <div
+            ref={fullscreenPanelRef}
+            className="note-viewer-fullscreen__panel"
+            tabIndex={-1}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {headerContent}
+            <div className="note-viewer-fullscreen__body">
+              {bodyContent}
+            </div>
+          </div>
+        </div>,
+        portalTarget
+      )
+    : null;
+
+  return (
+    <>
+      {fullscreenOverlay}
+      {!fullscreen && (
+        <>
+          <DragHandle onDrag={handleDrag} />
+          <div
+            className="split-pane__viewer"
+            style={{ width: viewerWidth }}
+            role="complementary"
+            aria-label="Note viewer"
+          >
+            {headerContent}
+            {bodyContent}
+          </div>
+        </>
+      )}
     </>
   );
 }

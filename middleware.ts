@@ -104,6 +104,7 @@ function addSecurityHeaders(res: NextResponse): NextResponse {
   res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   res.headers.set("Permissions-Policy", "camera=(), microphone=(self), geolocation=()");
   res.headers.set("X-DNS-Prefetch-Control", "off");
+  res.headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
   return res;
 }
 
@@ -119,7 +120,8 @@ function isOriginAllowed(req: NextRequest): boolean {
   const origin = req.headers.get("origin");
   const host = req.headers.get("host");
 
-  // If no origin header (same-origin requests from some browsers), allow
+  // Requests without Origin header are allowed — SameSite=Strict cookie
+  // attribute is the primary CSRF defense. The Origin check is defense-in-depth.
   if (!origin) return true;
 
   try {

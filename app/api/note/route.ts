@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getNote, isSecretPath, getVaultPath, isServerlessMode } from "@/lib/vault";
-import * as kv from "@/lib/kv";
+import { getNote, isSecretPath, getVaultPath, isServerlessMode, saveNoteToKV } from "@/lib/vault";
+import { verifyJWT, COOKIE_NAME } from "@/lib/auth";
+import { deleteKey } from "@/lib/kv";
+import { extractTags, wikilinkTarget } from "@/lib/text-utils";
 import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
@@ -13,15 +15,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "path parameter is required" }, { status: 400 });
   }
 
-  // Basic path traversal protection
-  if (notePath.includes("..")) {
+  // Reject absolute paths and enforce safe character/extension rules
+  if (notePath.startsWith("/") || !/^[a-zA-Z0-9_\-\/\.\s]+\.md$/.test(notePath)) {
     return NextResponse.json({ error: "Invalid path" }, { status: 400 });
   }
 
-  // Block guest access to secrets folder (authenticated users can access)
+  // Block guest access to secrets folder (require valid JWT)
   if (isSecretPath(notePath)) {
-    const token = req.cookies.get("cortex-token")?.value;
-    if (!token) {
+    const token = req.cookies.get(COOKIE_NAME)?.value;
+    const isAuthed = token ? !!(await verifyJWT(token)) : false;
+    if (!isAuthed) {
       return NextResponse.json({ error: "Note not found" }, { status: 404 });
     }
   }
@@ -50,8 +53,18 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "path and appendLink required" }, { status: 400 });
     }
 
-    if (notePath.includes("..")) {
+    if (notePath.startsWith("/") || !/^[a-zA-Z0-9_\-\/\.\s]+\.md$/.test(notePath)) {
       return NextResponse.json({ error: "Invalid path" }, { status: 400 });
+    }
+
+    const token = req.cookies.get(COOKIE_NAME)?.value;
+    const payload = token ? await verifyJWT(token) : null;
+    if (!payload) {
+      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+    }
+
+    if (isSecretPath(notePath)) {
+      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
     const note = await getNote(notePath);
@@ -64,7 +77,7 @@ export async function PATCH(req: NextRequest) {
     const newRawContent = note.rawContent + `\n[[${appendLink}]]`;
     const newOutgoing = [...note.outgoing, appendLink];
 
-    await kv.hset(`vault:note:${notePath}`, {
+    await saveNoteToKV(notePath, {
       content: newContent,
       rawContent: newRawContent,
       outgoing: JSON.stringify(newOutgoing),
@@ -86,15 +99,15 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "path and content required" }, { status: 400 });
     }
 
-    if (notePath.includes("..")) {
+    if (notePath.startsWith("/") || !/^[a-zA-Z0-9_\-\/\.\s]+\.md$/.test(notePath)) {
       return NextResponse.json({ error: "Invalid path" }, { status: 400 });
     }
 
-    if (isSecretPath(notePath)) {
-      const token = req.cookies.get("cortex-token")?.value;
-      if (!token) {
-        return NextResponse.json({ error: "Not authorized" }, { status: 403 });
-      }
+    // All writes require authentication (route is public for GET only)
+    const token = req.cookies.get(COOKIE_NAME)?.value;
+    const payload = token ? await verifyJWT(token) : null;
+    if (!payload) {
+      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
     const existing = await getNote(notePath);
@@ -104,30 +117,20 @@ export async function PUT(req: NextRequest) {
 
     // Parse the new raw content to extract frontmatter, content, tags, outgoing links
     const { data, content: parsedContent } = matter(newRawContent);
+
     const WIKILINK_RE = /\[\[([^\]]+)\]\]/g;
     const outgoing: string[] = [];
     let match: RegExpExecArray | null;
     while ((match = WIKILINK_RE.exec(parsedContent)) !== null) {
-      outgoing.push(match[1].split(/[|#]/)[0].trim());
+      const target = wikilinkTarget(match[1]);
+      if (target) outgoing.push(target);
     }
 
-    const tags: string[] = (() => {
-      const raw = data.tags ?? data.tag ?? data.Topics ?? data.topics ?? null;
-      if (!raw) return [];
-      if (Array.isArray(raw)) return raw.map((t: unknown) => {
-        const s = String(t).trim();
-        return s.startsWith("#") ? s : `#${s}`;
-      });
-      if (typeof raw === "string") {
-        return raw.split(/[\s,]+/).map(s => s.trim()).filter(Boolean).map(s => s.startsWith("#") ? s : `#${s}`);
-      }
-      return [];
-    })();
-
+    const tags = extractTags(data);
     const words = parsedContent.trim() ? parsedContent.trim().split(/\s+/).length : 0;
 
     // Update KV store
-    await kv.hset(`vault:note:${notePath}`, {
+    await saveNoteToKV(notePath, {
       content: parsedContent,
       rawContent: newRawContent,
       outgoing: JSON.stringify(outgoing),
@@ -145,6 +148,9 @@ export async function PUT(req: NextRequest) {
         fs.writeFileSync(fullPath, newRawContent, "utf8");
       }
     }
+
+    // Invalidate cached clusters since note content changed
+    deleteKey("cache:clusters").catch(() => {});
 
     return NextResponse.json({ ok: true });
   } catch (err) {

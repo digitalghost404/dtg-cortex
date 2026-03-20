@@ -3110,6 +3110,76 @@ body {
   border-color: var(--cyan-mid);
 }
 
+/* ─── Note Viewer Fullscreen ───────────────────────────────────────── */
+
+.note-viewer-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: note-fs-fade-in 0.2s ease-out;
+}
+
+@keyframes note-fs-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.note-viewer-fullscreen__panel {
+  width: min(900px, 90vw);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-deep);
+  border: 1px solid var(--border-dim);
+  border-radius: 4px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), var(--shadow-glow-sm);
+  animation: note-fs-scale-in 0.2s ease-out;
+  overflow: hidden;
+}
+
+.note-viewer-fullscreen__body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+@keyframes note-fs-scale-in {
+  from { transform: scale(0.96); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
+}
+
+.note-viewer-fullscreen__panel .note-viewer__content {
+  font-size: 0.85rem;
+  padding: 24px 32px;
+}
+
+.note-viewer-fullscreen__panel .note-viewer__content h1 { font-size: 1.2rem; }
+.note-viewer-fullscreen__panel .note-viewer__content h2 { font-size: 1.05rem; }
+.note-viewer-fullscreen__panel .note-viewer__content h3 { font-size: 0.95rem; }
+
+.note-viewer-fullscreen__panel .note-viewer__editor {
+  padding: 24px 32px;
+  font-size: 0.85rem;
+}
+
+@media (max-width: 767px) {
+  .note-viewer-fullscreen__panel {
+    width: 95vw;
+    max-height: 95vh;
+  }
+  .note-viewer-fullscreen__panel .note-viewer__content {
+    padding: 16px;
+  }
+  .note-viewer-fullscreen__panel .note-viewer__editor {
+    padding: 16px;
+  }
+}
+
 /* ─── Image Drop ───────────────────────────────────────────────────── */
 
 .drop-overlay {

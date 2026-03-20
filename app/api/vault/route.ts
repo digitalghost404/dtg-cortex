@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllNotes, isSecretPath } from "@/lib/vault";
 import type { VaultNote } from "@/lib/vault";
+import { verifyJWT } from "@/lib/auth";
+import { wikilinkTarget } from "@/lib/text-utils";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -32,14 +34,6 @@ export interface VaultStats {
   topTags: TagEntry[];
   folderSizes: FolderEntry[];
   emptyNotes: string[];
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function wikilinkTarget(raw: string): string {
-  return raw.split(/[|#]/)[0].trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -157,7 +151,8 @@ function computeVaultStats(notes: VaultNote[]): VaultStats {
 
 export async function GET(req: NextRequest) {
   try {
-    const isAuthed = !!req.cookies.get("cortex-token")?.value;
+    const token = req.cookies.get("cortex-token")?.value;
+    const isAuthed = token ? !!(await verifyJWT(token)) : false;
     const notes = isAuthed
       ? await getAllNotes()
       : (await getAllNotes()).filter((n) => !isSecretPath(n.path));

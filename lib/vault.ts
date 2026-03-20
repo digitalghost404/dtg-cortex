@@ -2,6 +2,7 @@ import * as kv from "./kv";
 import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
+import { extractTags, wikilinkTarget, countWords } from "./text-utils";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -42,11 +43,12 @@ const VAULT_PATH = process.env.VAULT_PATH;
  * Works with both relative vault paths ("secrets/foo.md") and full paths.
  */
 export function isSecretPath(notePath: string): boolean {
-  const normalized = notePath.replace(/\\/g, "/");
+  const normalized = notePath.replace(/\\/g, "/").toLowerCase();
   return (
     normalized === "secrets" ||
     normalized.startsWith("secrets/") ||
-    normalized.includes("/secrets/")
+    normalized.includes("/secrets/") ||
+    normalized.endsWith("/secrets")
   );
 }
 
@@ -55,35 +57,6 @@ export function isSecretPath(notePath: string): boolean {
 // ---------------------------------------------------------------------------
 
 const WIKILINK_RE = /\[\[([^\]]+)\]\]/g;
-
-function normaliseTag(raw: unknown): string {
-  const s = String(raw).trim();
-  return s.startsWith("#") ? s : `#${s}`;
-}
-
-function extractTags(data: Record<string, unknown>): string[] {
-  const raw = data.tags ?? data.tag ?? data.Topics ?? data.topics ?? null;
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw.map(normaliseTag);
-  if (typeof raw === "string") {
-    return raw
-      .split(/[\s,]+/)
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map(normaliseTag);
-  }
-  return [];
-}
-
-function wikilinkTarget(raw: string): string {
-  return raw.split(/[|#]/)[0].trim();
-}
-
-function countWords(text: string): number {
-  const trimmed = text.trim();
-  if (!trimmed) return 0;
-  return trimmed.split(/\s+/).length;
-}
 
 // ---------------------------------------------------------------------------
 // Filesystem mode: read directly from disk
@@ -119,7 +92,8 @@ function readNoteFromDisk(fullPath: string, vaultPath: string): VaultNote {
   let match: RegExpExecArray | null;
   const re = new RegExp(WIKILINK_RE.source, "g");
   while ((match = re.exec(content)) !== null) {
-    outgoing.push(wikilinkTarget(match[1]));
+    const target = wikilinkTarget(match[1]);
+    if (target) outgoing.push(target);
   }
 
   return {
@@ -247,4 +221,11 @@ export function getVaultPath(): string | undefined {
 
 export function isServerlessMode(): boolean {
   return isServerless;
+}
+
+export async function saveNoteToKV(
+  notePath: string,
+  fields: Record<string, string | number>
+): Promise<void> {
+  await kv.hset(`vault:note:${notePath}`, fields);
 }

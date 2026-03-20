@@ -15,7 +15,7 @@ export interface VectorMetadata {
 
 let vectorIndex: Index<VectorMetadata> | null = null;
 
-function getIndex(): Index<VectorMetadata> {
+export function getIndex(): Index<VectorMetadata> {
   if (!vectorIndex) {
     vectorIndex = new Index<VectorMetadata>({
       url: process.env.UPSTASH_VECTOR_REST_URL!,

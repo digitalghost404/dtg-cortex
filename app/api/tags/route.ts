@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllNotes, isSecretPath } from "@/lib/vault";
+import { verifyJWT } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
   try {
-    const isAuthed = !!req.cookies.get("cortex-token")?.value;
+    const token = req.cookies.get("cortex-token")?.value;
+    const isAuthed = token ? !!(await verifyJWT(token)) : false;
     const notes = isAuthed
       ? await getAllNotes()
       : (await getAllNotes()).filter((n) => !isSecretPath(n.path));

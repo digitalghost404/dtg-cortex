@@ -49,14 +49,13 @@ describe("loadMemory error handling", () => {
 });
 
 describe("saveMemory error handling", () => {
-  it("catches and logs error when setJSON throws", async () => {
+  it("propagates error when setJSON throws", async () => {
     mockGetJSON.mockResolvedValue(null);
     mockSetJSON.mockRejectedValue(new Error("write failed"));
 
-    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    await addMemory({ type: "fact", content: "will fail to save", source: "test" });
-    expect(spy).toHaveBeenCalledWith("[memory saveMemory]", expect.any(Error));
-    spy.mockRestore();
+    await expect(
+      addMemory({ type: "fact", content: "will fail to save", source: "test" })
+    ).rejects.toThrow("write failed");
   });
 });
 
