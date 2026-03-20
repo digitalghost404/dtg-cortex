@@ -103,12 +103,11 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "Invalid path" }, { status: 400 });
     }
 
-    if (isSecretPath(notePath)) {
-      const token = req.cookies.get(COOKIE_NAME)?.value;
-      const isAuthed = token ? !!(await verifyJWT(token)) : false;
-      if (!isAuthed) {
-        return NextResponse.json({ error: "Not authorized" }, { status: 403 });
-      }
+    // All writes require authentication (route is public for GET only)
+    const token = req.cookies.get(COOKIE_NAME)?.value;
+    const payload = token ? await verifyJWT(token) : null;
+    if (!payload) {
+      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
     const existing = await getNote(notePath);
