@@ -363,7 +363,11 @@ export async function GET(): Promise<NextResponse<ClustersResponse | { error: st
     // Return cached result if available — t-SNE is expensive.
     const cached = await getWithTTL(CACHE_KEY);
     if (cached) {
-      return NextResponse.json(JSON.parse(cached) as ClustersResponse);
+      try {
+        return NextResponse.json(JSON.parse(cached) as ClustersResponse);
+      } catch {
+        // Corrupted cache — fall through to recompute
+      }
     }
 
     const hasItems = await indexHasItems();

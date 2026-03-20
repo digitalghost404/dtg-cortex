@@ -85,14 +85,11 @@ describe("saveLineageEntry", () => {
     expect(call![1].entries.length).toBe(1000);
   });
 
-  it("catches and logs error when setJSON throws", async () => {
+  it("propagates error when setJSON throws", async () => {
     mockGetJSON.mockResolvedValue({ entries: [] });
     mockSetJSON.mockRejectedValue(new Error("write failed"));
 
-    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    await saveLineageEntry(makeEntry({ query: "will-fail" }));
-    expect(spy).toHaveBeenCalledWith("[lineage saveLineageEntry]", expect.any(Error));
-    spy.mockRestore();
+    await expect(saveLineageEntry(makeEntry({ query: "will-fail" }))).rejects.toThrow("write failed");
   });
 });
 

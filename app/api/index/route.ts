@@ -21,13 +21,17 @@ export async function POST(req: NextRequest) {
 
   try {
     await buildIndex();
+    // Invalidate cached clusters since index changed
+    await deleteKey("cache:clusters").catch(() => {});
     return NextResponse.json({ success: true, message: "Vault indexed successfully." });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   } finally {
     // Always release the lock, even if buildIndex() threw.
-    await deleteKey(REINDEX_LOCK_KEY);
+    await deleteKey(REINDEX_LOCK_KEY).catch((err) =>
+      console.error("[reindex] Failed to release lock, will expire in", REINDEX_LOCK_TTL, "s:", err)
+    );
   }
 }
 

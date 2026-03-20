@@ -37,7 +37,7 @@ export async function loadLineage(): Promise<LineageStore> {
 
 export async function saveLineageEntry(entry: LineageEntry): Promise<void> {
   // Chain writes so each one waits for the previous to finish before reading.
-  lineageMutex = lineageMutex.then(async () => {
+  const op = lineageMutex.then(async () => {
     const store = await loadLineage();
     store.entries.push(entry);
     // Prune oldest entries if over limit
@@ -45,8 +45,10 @@ export async function saveLineageEntry(entry: LineageEntry): Promise<void> {
       store.entries = store.entries.slice(-MAX_LINEAGE_ENTRIES);
     }
     await kv.setJSON(KV_KEY, store);
-  }).catch((err) => console.error("[lineage saveLineageEntry]", err));
-  await lineageMutex;
+  });
+  // Prevent unhandled rejection from breaking the chain for future callers
+  lineageMutex = op.catch(() => {});
+  await op;
 }
 
 export async function getLineageStats(): Promise<{

@@ -273,7 +273,7 @@ function NoteItem({
           letterSpacing: "0.06em",
         }}
       >
-        {relativeTime(note.modifiedAt)}
+        {relativeTime(note.modifiedAt, true)}
       </span>
     </button>
   );

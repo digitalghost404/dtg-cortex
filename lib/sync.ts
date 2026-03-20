@@ -121,7 +121,8 @@ export async function runSync(): Promise<SyncResult> {
     const wikiRe = /\[\[([^\]]+)\]\]/g;
     let match: RegExpExecArray | null;
     while ((match = wikiRe.exec(content)) !== null) {
-      outgoing.push(wikilinkTarget(match[1]));
+      const target = wikilinkTarget(match[1]);
+      if (target) outgoing.push(target);
     }
 
     const tags = extractTags(data as Record<string, unknown>);
@@ -248,6 +249,9 @@ export async function runSync(): Promise<SyncResult> {
     totalWords: String(totalWords),
     lastSyncAt: new Date().toISOString(),
   });
+
+  // Invalidate cached cluster visualization since vault data changed
+  await kv.deleteKey("cache:clusters").catch(() => {});
 
   return {
     created,

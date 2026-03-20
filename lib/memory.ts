@@ -30,17 +30,13 @@ export async function loadMemory(): Promise<MemoryStore> {
 }
 
 export async function saveMemory(store: MemoryStore): Promise<void> {
-  try {
-    await kv.setJSON(KV_KEY, store);
-  } catch (err) {
-    console.error("[memory saveMemory]", err);
-  }
+  await kv.setJSON(KV_KEY, store);
 }
 
 export async function addMemory(
   entry: Omit<MemoryEntry, "id" | "createdAt" | "lastReferencedAt" | "referenceCount">
 ): Promise<void> {
-  memoryMutex = memoryMutex.then(async () => {
+  const op = memoryMutex.then(async () => {
     const store = await loadMemory();
     const now = new Date().toISOString();
 
@@ -73,8 +69,9 @@ export async function addMemory(
     }
 
     await saveMemory(store);
-  }).catch((err) => console.error("[memory addMemory]", err));
-  await memoryMutex;
+  });
+  memoryMutex = op.catch(() => {});
+  await op;
 }
 
 export async function getRelevantMemories(query: string, limit = 10): Promise<MemoryEntry[]> {
@@ -130,16 +127,17 @@ export async function getAllMemories(): Promise<MemoryEntry[]> {
 }
 
 export async function deleteMemory(id: string): Promise<void> {
-  memoryMutex = memoryMutex.then(async () => {
+  const op = memoryMutex.then(async () => {
     const store = await loadMemory();
     store.entries = store.entries.filter((e) => e.id !== id);
     await saveMemory(store);
-  }).catch((err) => console.error("[memory deleteMemory]", err));
-  await memoryMutex;
+  });
+  memoryMutex = op.catch(() => {});
+  await op;
 }
 
 export async function touchMemory(id: string): Promise<void> {
-  memoryMutex = memoryMutex.then(async () => {
+  const op = memoryMutex.then(async () => {
     const store = await loadMemory();
     const entry = store.entries.find((e) => e.id === id);
     if (entry) {
@@ -147,6 +145,7 @@ export async function touchMemory(id: string): Promise<void> {
       entry.lastReferencedAt = new Date().toISOString();
       await saveMemory(store);
     }
-  }).catch((err) => console.error("[memory touchMemory]", err));
-  await memoryMutex;
+  });
+  memoryMutex = op.catch(() => {});
+  await op;
 }

@@ -2,7 +2,7 @@ import * as kv from "./kv";
 import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
-import { normaliseTag, extractTags, wikilinkTarget, countWords } from "./text-utils";
+import { extractTags, wikilinkTarget, countWords } from "./text-utils";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -92,7 +92,8 @@ function readNoteFromDisk(fullPath: string, vaultPath: string): VaultNote {
   let match: RegExpExecArray | null;
   const re = new RegExp(WIKILINK_RE.source, "g");
   while ((match = re.exec(content)) !== null) {
-    outgoing.push(wikilinkTarget(match[1]));
+    const target = wikilinkTarget(match[1]);
+    if (target) outgoing.push(target);
   }
 
   return {
