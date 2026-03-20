@@ -281,6 +281,8 @@ function TopicSection({ section }: { section: BriefingSection }) {
 export default function BriefingPage() {
   const { isAuthenticated, isLoading: authLoading, logout } = useAuth();
   const [briefing, setBriefing] = useState<Briefing | null>(null);
+  const [stale, setStale] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const [dates, setDates] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -328,8 +330,9 @@ export default function BriefingPage() {
         }
         throw new Error("Failed to fetch briefing");
       }
-      const data: Briefing = await res.json();
-      setBriefing(data);
+      const data = await res.json();
+      setBriefing(data as Briefing);
+      setStale(!!data.stale);
       setCurrentDate(data.date);
       setError(null);
     } catch {
@@ -338,6 +341,24 @@ export default function BriefingPage() {
       setLoading(false);
     }
   }, []);
+
+  const regenerate = useCallback(async () => {
+    setRegenerating(true);
+    try {
+      const res = await fetch("/api/briefing", { method: "POST" });
+      if (res.ok) {
+        setStale(false);
+        await fetchBriefing();
+        await fetchDates();
+      } else {
+        setError("Regeneration failed. Please try again later.");
+      }
+    } catch {
+      setError("Regeneration failed. Please try again later.");
+    } finally {
+      setRegenerating(false);
+    }
+  }, [fetchBriefing, fetchDates]);
 
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
@@ -551,6 +572,55 @@ export default function BriefingPage() {
             >
               {error}
             </p>
+          </div>
+        )}
+
+        {/* Stale data warning */}
+        {stale && briefing && !loading && (
+          <div
+            style={{
+              background: "rgba(251,191,36,0.06)",
+              border: "1px solid rgba(251,191,36,0.2)",
+              borderLeft: "3px solid #fbbf24",
+              borderRadius: "3px",
+              padding: "0.75rem 1.25rem",
+              marginBottom: "1.25rem",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "1rem",
+            }}
+          >
+            <p
+              style={{
+                fontFamily: "var(--font-geist-mono, monospace)",
+                fontSize: "0.6rem",
+                letterSpacing: "0.1em",
+                color: "#fbbf24",
+                margin: 0,
+              }}
+            >
+              SHOWING CACHED BRIEFING FROM {formatDate(briefing.date)} — TODAY&apos;S GENERATION FAILED
+            </p>
+            <button
+              onClick={regenerate}
+              disabled={regenerating}
+              style={{
+                fontFamily: "var(--font-geist-mono, monospace)",
+                fontSize: "0.55rem",
+                letterSpacing: "0.1em",
+                color: regenerating ? "var(--text-faint)" : "#fbbf24",
+                background: "transparent",
+                border: "1px solid rgba(251,191,36,0.3)",
+                borderRadius: "2px",
+                padding: "4px 12px",
+                cursor: regenerating ? "wait" : "pointer",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+              }}
+            >
+              {regenerating ? "GENERATING..." : "RETRY"}
+            </button>
           </div>
         )}
 

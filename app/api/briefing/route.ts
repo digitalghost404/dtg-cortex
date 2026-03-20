@@ -49,6 +49,9 @@ export async function GET(req: NextRequest) {
   }
   if (!briefing) {
     briefing = await getLatestBriefing();
+    if (briefing && briefing.date !== today) {
+      return NextResponse.json({ ...briefing, stale: true });
+    }
   }
   if (!briefing) {
     return NextResponse.json({ error: "No briefings available" }, { status: 404 });
