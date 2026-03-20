@@ -11,6 +11,7 @@ import { upsertVectors, deleteVectorsByPath } from "./vector";
 import type { VectorMetadata } from "./vector";
 import { saveScar } from "./scars";
 import { chunkText, extractTags, wikilinkTarget, countWords } from "./text-utils";
+import { generateBriefing } from "./briefing-generator";
 
 // ---------------------------------------------------------------------------
 // Config
@@ -252,6 +253,13 @@ export async function runSync(): Promise<SyncResult> {
 
   // Invalidate cached cluster visualization since vault data changed
   await kv.deleteKey("cache:clusters").catch(() => {});
+
+  // Generate today's briefing (runs after sync so resonance has fresh vault data)
+  try {
+    await generateBriefing();
+  } catch (err) {
+    console.error("[sync] Briefing generation failed (non-fatal):", err);
+  }
 
   return {
     created,
