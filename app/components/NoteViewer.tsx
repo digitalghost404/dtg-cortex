@@ -281,6 +281,9 @@ export default function NoteViewer({ notePath, onClose, fullscreen = false, onTo
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
+  // Sibling notes in the same folder (for back/forward navigation)
+  const [siblings, setSiblings] = useState<string[]>([]);
+
   // Viewer panel width (controlled by drag)
   const [viewerWidth, setViewerWidth] = useState(400);
 
@@ -315,27 +318,24 @@ export default function NoteViewer({ notePath, onClose, fullscreen = false, onTo
     if (fullscreen) fullscreenPanelRef.current?.focus();
   }, [fullscreen]);
 
-  // When the external notePath changes (citation click), push to history.
-  // We use a ref for historyIndex inside the setter to avoid stale closure.
+  // Refs to read latest history/index without stale closures
   const historyIndexRef = useRef(historyIndex);
   historyIndexRef.current = historyIndex;
+  const historyRef = useRef(history);
+  historyRef.current = history;
 
+  // When the external notePath changes (citation click), push to history.
   useEffect(() => {
     if (!notePath) return;
     const idx = historyIndexRef.current;
-    let didPush = false;
-    setHistory((prev) => {
-      // If navigating to the same note, do nothing
-      if (prev[idx] === notePath) return prev;
-      // Truncate forward history, push new entry
-      didPush = true;
-      const next = prev.slice(0, idx + 1);
-      next.push(notePath);
-      return next;
-    });
-    if (didPush) {
-      setHistoryIndex(idx + 1);
-    }
+    const cur = historyRef.current;
+    // If navigating to the same note, do nothing
+    if (cur[idx] === notePath) return;
+    // Truncate forward history, push new entry
+    const next = cur.slice(0, idx + 1);
+    next.push(notePath);
+    setHistory(next);
+    setHistoryIndex(idx + 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notePath]);
 
@@ -374,33 +374,71 @@ export default function NoteViewer({ notePath, onClose, fullscreen = false, onTo
     return () => controller.abort();
   }, [activePath]);
 
+  // Fetch sibling notes in the same folder whenever activePath changes
+  useEffect(() => {
+    if (!activePath) {
+      setSiblings([]);
+      return;
+    }
+    const folder = activePath.includes("/")
+      ? activePath.slice(0, activePath.lastIndexOf("/"))
+      : "";
+    const controller = new AbortController();
+    fetch("/api/vault/tree", { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((data: { notes: { path: string; folder: string }[] }) => {
+        const folderNotes = data.notes
+          .filter((n) => n.folder === folder)
+          .map((n) => n.path)
+          .sort((a, b) => a.localeCompare(b));
+        setSiblings(folderNotes);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setSiblings([]);
+      });
+    return () => controller.abort();
+  }, [activePath]);
+
   // Wikilink navigation: push the linked note onto the history
   const handleWikilink = useCallback(
     (target: string) => {
-      // Wikilinks reference note names without path/extension; we attempt the
-      // path used in the vault by appending ".md". The API resolves via the
-      // vault root, so we just pass the bare name with extension.
       const linkedPath = `${target}.md`;
       const idx = historyIndexRef.current;
-      setHistory((prev) => {
-        const next = prev.slice(0, idx + 1);
-        next.push(linkedPath);
-        return next;
-      });
+      const cur = historyRef.current;
+      const next = cur.slice(0, idx + 1);
+      next.push(linkedPath);
+      setHistory(next);
       setHistoryIndex(idx + 1);
     },
-    [] // no deps needed — historyIndexRef.current is always current
+    [] // no deps needed — refs are always current
   );
 
-  const canBack = historyIndex > 0;
-  const canForward = historyIndex < history.length - 1;
+  // Back/forward navigate through sibling notes in the same folder
+  const siblingIndex = activePath ? siblings.indexOf(activePath) : -1;
+  const canBack = siblingIndex > 0;
+  const canForward = siblingIndex >= 0 && siblingIndex < siblings.length - 1;
 
   function handleBack() {
-    if (canBack) setHistoryIndex((i) => i - 1);
+    if (!canBack) return;
+    const prevPath = siblings[siblingIndex - 1];
+    const idx = historyIndexRef.current;
+    const cur = historyRef.current;
+    const next = cur.slice(0, idx + 1);
+    next.push(prevPath);
+    setHistory(next);
+    setHistoryIndex(idx + 1);
   }
 
   function handleForward() {
-    if (canForward) setHistoryIndex((i) => i + 1);
+    if (!canForward) return;
+    const nextPath = siblings[siblingIndex + 1];
+    const idx = historyIndexRef.current;
+    const cur = historyRef.current;
+    const next = cur.slice(0, idx + 1);
+    next.push(nextPath);
+    setHistory(next);
+    setHistoryIndex(idx + 1);
   }
 
   function handleDrag(dx: number) {
