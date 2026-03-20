@@ -6,16 +6,16 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import matter from "gray-matter";
-import { Redis } from "@upstash/redis";
-import { Index } from "@upstash/vector";
+import * as kv from "./kv";
+import { upsertVectors, deleteVectorsByPath } from "./vector";
+import type { VectorMetadata } from "./vector";
 import { saveScar } from "./scars";
+import { chunkText, extractTags, wikilinkTarget, countWords } from "./text-utils";
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 
-const CHUNK_SIZE = 500;
-const CHUNK_OVERLAP = 50;
 const EMBED_BATCH_SIZE = 20;
 
 export interface SyncResult {
@@ -27,15 +27,6 @@ export interface SyncResult {
   pendingWritten: number;
   totalNotes: number;
   totalWords: number;
-}
-
-interface VectorMetadata {
-  [key: string]: unknown;
-  path: string;
-  name: string;
-  chunk: number;
-  text: string;
-  tags: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -59,50 +50,6 @@ function collectMarkdownFiles(dir: string): string[] {
   }
   return files;
 }
-
-/* v8 ignore start — internal helper; edge branches tested via sync-helpers.test.ts */
-function chunkText(text: string): string[] {
-  const words = text.split(/\s+/);
-  const chunks: string[] = [];
-  for (let i = 0; i < words.length; i += CHUNK_SIZE - CHUNK_OVERLAP) {
-    const chunk = words.slice(i, i + CHUNK_SIZE).join(" ");
-    if (chunk.trim().length > 0) chunks.push(chunk);
-    if (i + CHUNK_SIZE >= words.length) break;
-  }
-  return chunks;
-}
-/* v8 ignore stop */
-
-function normaliseTag(raw: unknown): string {
-  const s = String(raw).trim();
-  return s.startsWith("#") ? s : `#${s}`;
-}
-
-/* v8 ignore start — internal helpers; edge branches tested via sync-helpers.test.ts */
-function extractTags(data: Record<string, unknown>): string[] {
-  const raw = data.tags ?? data.tag ?? data.Topics ?? data.topics ?? null;
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw.map(normaliseTag);
-  if (typeof raw === "string") {
-    return raw
-      .split(/[\s,]+/)
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .map(normaliseTag);
-  }
-  return [];
-}
-
-function wikilinkTarget(raw: string): string {
-  return raw.split(/[|#]/)[0].trim();
-}
-
-function countWords(text: string): number {
-  const trimmed = text.trim();
-  if (!trimmed) return 0;
-  return trimmed.split(/\s+/).length;
-}
-/* v8 ignore stop */
 
 async function embedTexts(inputs: string[], voyageApiKey: string): Promise<number[][]> {
   const res = await fetch("https://api.voyageai.com/v1/embeddings", {
@@ -131,18 +78,8 @@ export async function runSync(): Promise<SyncResult> {
   if (!VAULT_PATH) throw new Error("VAULT_PATH is not set");
   if (!process.env.KV_REST_API_URL) throw new Error("KV_REST_API_URL is not set");
 
-  const redis = new Redis({
-    url: process.env.KV_REST_API_URL!,
-    token: process.env.KV_REST_API_TOKEN!,
-  });
-
-  const vectorIndex = new Index<VectorMetadata>({
-    url: process.env.UPSTASH_VECTOR_REST_URL!,
-    token: process.env.UPSTASH_VECTOR_REST_TOKEN!,
-  });
-
   const files = collectMarkdownFiles(VAULT_PATH);
-  const existingPaths = (await redis.smembers("vault:notes:index")) as string[];
+  const existingPaths = await kv.smembers("vault:notes:index");
   const existingPathSet = new Set(existingPaths);
   const localPaths = new Set<string>();
 
@@ -170,7 +107,7 @@ export async function runSync(): Promise<SyncResult> {
     localPaths.add(relativePath);
 
     const hash = md5(raw);
-    const existingHash = await redis.get<string>(`vault:hash:${relativePath}`);
+    const existingHash = await kv.getJSON<string>(`vault:hash:${relativePath}`);
 
     const words = countWords(content);
     totalWords += words;
@@ -189,7 +126,7 @@ export async function runSync(): Promise<SyncResult> {
 
     const tags = extractTags(data as Record<string, unknown>);
 
-    await redis.hset(`vault:note:${relativePath}`, {
+    await kv.hset(`vault:note:${relativePath}`, {
       name,
       content,
       rawContent: raw,
@@ -201,22 +138,14 @@ export async function runSync(): Promise<SyncResult> {
       size: String(stat.size),
     });
 
-    await redis.set(`vault:hash:${relativePath}`, hash);
-    await redis.sadd("vault:notes:index", relativePath);
+    await kv.setJSON(`vault:hash:${relativePath}`, hash);
+    await kv.sadd("vault:notes:index", relativePath);
 
     // Prepare vector chunks
     const chunks = chunkText(content);
     if (chunks.length > 0 && VOYAGE_API_KEY) {
       try {
-        const oldResults = await vectorIndex.query<VectorMetadata>({
-          vector: new Array(1024).fill(0),
-          topK: 1000,
-          filter: `path = '${relativePath.replace(/'/g, "\\'")}'`,
-          includeMetadata: false,
-        });
-        if (oldResults.length > 0) {
-          await vectorIndex.delete(oldResults.map((r) => r.id as string));
-        }
+        await deleteVectorsByPath(relativePath);
       } catch {
         // Index might be empty
       }
@@ -248,13 +177,9 @@ export async function runSync(): Promise<SyncResult> {
     }
   }
 
-  // Upsert vector batches
+  // Upsert vector batches via shared abstraction
   if (vectorBatch.length > 0) {
-    const VECTOR_BATCH_SIZE = 1000;
-    for (let i = 0; i < vectorBatch.length; i += VECTOR_BATCH_SIZE) {
-      const batch = vectorBatch.slice(i, i + VECTOR_BATCH_SIZE);
-      await vectorIndex.upsert(batch);
-    }
+    await upsertVectors(vectorBatch);
   }
 
   // Handle deletes
@@ -262,7 +187,7 @@ export async function runSync(): Promise<SyncResult> {
     if (!localPaths.has(existingPath)) {
       // Save scar tombstone before deleting
       try {
-        const noteData = (await redis.hgetall(`vault:note:${existingPath}`)) as Record<string, string> | null;
+        const noteData = await kv.hgetall<Record<string, string>>(`vault:note:${existingPath}`);
         if (noteData) {
           /* v8 ignore next 2 — defensive fallbacks for missing fields */
           const name = noteData.name || path.basename(existingPath, ".md");
@@ -280,20 +205,12 @@ export async function runSync(): Promise<SyncResult> {
         console.error(`  Failed to save scar for ${existingPath}:`, scarErr);
       }
 
-      await redis.del(`vault:note:${existingPath}`);
-      await redis.del(`vault:hash:${existingPath}`);
-      await redis.srem("vault:notes:index", existingPath);
+      await kv.deleteKey(`vault:note:${existingPath}`);
+      await kv.deleteKey(`vault:hash:${existingPath}`);
+      await kv.srem("vault:notes:index", existingPath);
 
       try {
-        const oldResults = await vectorIndex.query<VectorMetadata>({
-          vector: new Array(1024).fill(0),
-          topK: 1000,
-          filter: `path = '${existingPath.replace(/'/g, "\\'")}'`,
-          includeMetadata: false,
-        });
-        if (oldResults.length > 0) {
-          await vectorIndex.delete(oldResults.map((r) => r.id as string));
-        }
+        await deleteVectorsByPath(existingPath);
       } catch {
         // Ignore
       }
@@ -303,13 +220,10 @@ export async function runSync(): Promise<SyncResult> {
   }
 
   // Handle pending creates
-  const pendingCreates = (await redis.smembers("vault:pending-creates")) as string[];
+  const pendingCreates = await kv.smembers("vault:pending-creates");
   let pendingWritten = 0;
   for (const pendingPath of pendingCreates) {
-    const noteData = (await redis.hgetall(`vault:note:${pendingPath}`)) as Record<
-      string,
-      string
-    > | null;
+    const noteData = await kv.hgetall<Record<string, string>>(`vault:note:${pendingPath}`);
     if (!noteData || !noteData.rawContent) continue;
 
     const diskPath = path.join(VAULT_PATH, pendingPath);
@@ -325,11 +239,11 @@ export async function runSync(): Promise<SyncResult> {
       console.error(`  Failed to write pending note ${pendingPath}:`, err);
     }
 
-    await redis.srem("vault:pending-creates", pendingPath);
+    await kv.srem("vault:pending-creates", pendingPath);
   }
 
   // Update vault metadata
-  await redis.hset("vault:meta", {
+  await kv.hset("vault:meta", {
     totalNotes: String(localPaths.size),
     totalWords: String(totalWords),
     lastSyncAt: new Date().toISOString(),

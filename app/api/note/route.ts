@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getNote, isSecretPath, getVaultPath, isServerlessMode } from "@/lib/vault";
-import * as kv from "@/lib/kv";
+import { getNote, isSecretPath, getVaultPath, isServerlessMode, saveNoteToKV } from "@/lib/vault";
+import { verifyJWT, COOKIE_NAME } from "@/lib/auth";
 import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
@@ -13,8 +13,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "path parameter is required" }, { status: 400 });
   }
 
-  // Basic path traversal protection
-  if (notePath.includes("..")) {
+  // Reject absolute paths and enforce safe character/extension rules
+  if (notePath.startsWith("/") || !/^[a-zA-Z0-9_\-\/\.\s]+\.md$/.test(notePath)) {
     return NextResponse.json({ error: "Invalid path" }, { status: 400 });
   }
 
@@ -50,8 +50,18 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "path and appendLink required" }, { status: 400 });
     }
 
-    if (notePath.includes("..")) {
+    if (notePath.startsWith("/") || !/^[a-zA-Z0-9_\-\/\.\s]+\.md$/.test(notePath)) {
       return NextResponse.json({ error: "Invalid path" }, { status: 400 });
+    }
+
+    const token = req.cookies.get(COOKIE_NAME)?.value;
+    const payload = token ? await verifyJWT(token) : null;
+    if (!payload) {
+      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
+    }
+
+    if (isSecretPath(notePath)) {
+      return NextResponse.json({ error: "Not authorized" }, { status: 403 });
     }
 
     const note = await getNote(notePath);
@@ -64,7 +74,7 @@ export async function PATCH(req: NextRequest) {
     const newRawContent = note.rawContent + `\n[[${appendLink}]]`;
     const newOutgoing = [...note.outgoing, appendLink];
 
-    await kv.hset(`vault:note:${notePath}`, {
+    await saveNoteToKV(notePath, {
       content: newContent,
       rawContent: newRawContent,
       outgoing: JSON.stringify(newOutgoing),
@@ -86,7 +96,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "path and content required" }, { status: 400 });
     }
 
-    if (notePath.includes("..")) {
+    if (notePath.startsWith("/") || !/^[a-zA-Z0-9_\-\/\.\s]+\.md$/.test(notePath)) {
       return NextResponse.json({ error: "Invalid path" }, { status: 400 });
     }
 
@@ -127,7 +137,7 @@ export async function PUT(req: NextRequest) {
     const words = parsedContent.trim() ? parsedContent.trim().split(/\s+/).length : 0;
 
     // Update KV store
-    await kv.hset(`vault:note:${notePath}`, {
+    await saveNoteToKV(notePath, {
       content: parsedContent,
       rawContent: newRawContent,
       outgoing: JSON.stringify(outgoing),

@@ -66,6 +66,7 @@ export function useWakePhrase(
   const [isWakeActive, setIsWakeActive] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const onWakeRef = useRef(onWake);
+  const restartTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     onWakeRef.current = onWake;
@@ -112,7 +113,7 @@ export function useWakePhrase(
       // "no-speech" is common — just restart
       if (e.error === "no-speech") {
         // Restart after a brief pause
-        setTimeout(() => {
+        restartTimerRef.current = setTimeout(() => {
           if (recognitionRef.current === recognition) {
             try {
               recognition.start();
@@ -153,6 +154,7 @@ export function useWakePhrase(
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
       if (recognitionRef.current) {
         recognitionRef.current.abort();
         recognitionRef.current = null;

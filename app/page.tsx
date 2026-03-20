@@ -20,6 +20,7 @@ import { useAuth } from "./components/AuthProvider";
 import BootSequence from "./components/BootSequence";
 import SubconsciousBanner from "./components/SubconsciousBanner";
 import MemoryEcho from "./components/MemoryEcho";
+import { relativeTime } from "@/lib/time-utils";
 
 const GUEST_MAX_CHARS = 500;
 
@@ -86,19 +87,6 @@ function scoreToBars(score: number): number {
   return 1;
 }
 
-function relativeTime(isoStr: string): string {
-  const diff = Date.now() - new Date(isoStr).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  if (days === 1) return "yesterday";
-  if (days < 7) return `${days}d ago`;
-  return new Date(isoStr).toLocaleDateString();
-}
-
 // ---------------------------------------------------------------------------
 // CitationRow
 // ---------------------------------------------------------------------------
@@ -119,7 +107,9 @@ function CitationRow({ sources, onCitationClick }: CitationRowProps) {
   );
 
   const avgScore =
-    sources.reduce((sum, s) => sum + s.score, 0) / sources.length;
+    sources.length > 0
+      ? sources.reduce((sum, s) => sum + s.score, 0) / sources.length
+      : 0;
   const filledBars = scoreToBars(avgScore);
 
   return (
@@ -202,7 +192,9 @@ export default function Home() {
           if (!blob) return;
           const url = URL.createObjectURL(blob);
           const audio = new Audio(url);
-          audio.play().catch(() => {});
+          audio.play().catch(() => {
+            URL.revokeObjectURL(url);
+          });
           audio.onended = () => URL.revokeObjectURL(url);
         })
         .catch(() => {});
@@ -456,7 +448,23 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
   const [isIndexing, setIsIndexing] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [viewerNotePath, setViewerNotePath] = useState<string | null>(null);
+  const [noteFullscreen, setNoteFullscreen] = useState(false);
+
+  // Clear fullscreen if note viewer is closed from elsewhere
+  useEffect(() => {
+    if (viewerNotePath === null) setNoteFullscreen(false);
+  }, [viewerNotePath]);
   const [explorerOpen, setExplorerOpen] = useState(false);
+
+  // Stable callbacks for NoteViewer to avoid effect re-registration
+  const handleToggleNoteFullscreen = useCallback(() => {
+    setNoteFullscreen((p) => !p);
+  }, []);
+  const handleCloseNoteViewer = useCallback(() => {
+    setViewerNotePath(null);
+    setNoteFullscreen(false);
+  }, []);
+
   // Ref to the ChatView's setInput — populated by ChatView via onInjectInput
   const chatInputSetterRef = useRef<((text: string) => void) | null>(null);
 
@@ -512,6 +520,7 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
 
   const createAndActivateSession = useCallback(async () => {
     const res = await fetch("/api/sessions", { method: "POST" });
+    if (!res.ok) throw new Error(`Failed to create session: ${res.status}`);
     const session = (await res.json()) as SessionSummary;
     setSessions((prev) => [session, ...prev]);
     setInitialMessages([]);
@@ -552,7 +561,11 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
 
   async function handleDeleteSession(id: string, e: React.MouseEvent) {
     e.stopPropagation();
-    await fetch(`/api/sessions/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/sessions/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      console.error("Failed to delete session");
+      return;
+    }
     const remaining = sessions.filter((s) => s.id !== id);
     setSessions(remaining);
 
@@ -1010,7 +1023,9 @@ function AuthenticatedHome({ logout }: { logout: () => Promise<void> }) {
             </div>
             <NoteViewer
               notePath={viewerNotePath}
-              onClose={() => setViewerNotePath(null)}
+              fullscreen={noteFullscreen}
+              onToggleFullscreen={handleToggleNoteFullscreen}
+              onClose={handleCloseNoteViewer}
             />
           </div>
         ) : (
@@ -1159,6 +1174,7 @@ function ChatView({ sessionId, initialMessages, onSessionUpdated, onInjectInput,
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const searchingRef = useRef(false);
 
   // Expose setInput to the parent so the command palette can inject text
   useEffect(() => {
@@ -1368,6 +1384,8 @@ function ChatView({ sessionId, initialMessages, onSessionUpdated, onInjectInput,
     const query = rawInput.replace(/^\/search\s+/i, "").trim();
     if (!query) return;
 
+    if (searchingRef.current) return;
+    searchingRef.current = true;
     setIsSearching(true);
     try {
       const res = await fetch("/api/search", {
@@ -1394,6 +1412,7 @@ function ChatView({ sessionId, initialMessages, onSessionUpdated, onInjectInput,
       };
       setSearchEntries((prev) => [...prev, entry]);
     } finally {
+      searchingRef.current = false;
       setIsSearching(false);
     }
   }
@@ -1429,7 +1448,7 @@ function ChatView({ sessionId, initialMessages, onSessionUpdated, onInjectInput,
 
     if (isSearchMode) {
       if (!input.trim()) return;
-      if (isSearching) return;
+      if (searchingRef.current || isSearching) return;
       handleSearch(input);
       setInput("");
       return;

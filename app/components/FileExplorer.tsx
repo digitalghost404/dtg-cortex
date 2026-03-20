@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { relativeTime } from "@/lib/time-utils";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -73,16 +74,6 @@ function countAllNotes(node: FolderNode): number {
   );
 }
 
-function relativeTime(isoStr: string): string {
-  const diff = Date.now() - new Date(isoStr).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "now";
-  if (mins < 60) return `${mins}m`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d`;
-}
 
 // ---------------------------------------------------------------------------
 // Sub-components

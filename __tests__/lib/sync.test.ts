@@ -11,7 +11,7 @@
  * The Redis and Index constructors are mocked with plain `function`
  * constructors (not arrow functions) so they survive vi.clearAllMocks().
  * Both return a single stable mock object, so every test can configure the
- * same redisMock / vectorMock via mockResolvedValue calls directly.
+ * same kvMock / vectorMock via mockResolvedValue calls directly.
  *
  * vi.clearAllMocks() runs in the outer beforeEach and resets call counts.
  * All default mock responses are restored after the clear in the same hook.
@@ -21,43 +21,35 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Mock } from "vitest";
 
 // ---------------------------------------------------------------------------
-// Stable mock instances — created once at module scope
+// Stable mock instances — created via vi.hoisted() so they are available
+// when vi.mock factories run (which are hoisted to the top of the file).
 // ---------------------------------------------------------------------------
 
-const redisMock = {
-  get: vi.fn(),
-  set: vi.fn(),
-  del: vi.fn(),
-  hset: vi.fn(),
-  sadd: vi.fn(),
-  smembers: vi.fn(),
-  srem: vi.fn(),
-  hgetall: vi.fn(),
-};
-
-const vectorMock = {
-  upsert: vi.fn(),
-  query: vi.fn(),
-  delete: vi.fn(),
-};
+const { kvMock, vectorMock } = vi.hoisted(() => ({
+  kvMock: {
+    getJSON: vi.fn(),
+    setJSON: vi.fn(),
+    deleteKey: vi.fn(),
+    hset: vi.fn(),
+    sadd: vi.fn(),
+    smembers: vi.fn(),
+    srem: vi.fn(),
+    hgetall: vi.fn(),
+  },
+  vectorMock: {
+    upsertVectors: vi.fn(),
+    deleteVectorsByPath: vi.fn(),
+  },
+}));
 
 // ---------------------------------------------------------------------------
-// Module-level mocks — MUST come before any import that loads these modules.
-// Using `function` constructors (not arrow functions) so vi.clearAllMocks()
-// does not break the `new Redis(...)` / `new Index(...)` calls.
+// Module-level mocks — sync.ts now imports from @/lib/kv and @/lib/vector
+// rather than instantiating @upstash/redis and @upstash/vector directly.
 // ---------------------------------------------------------------------------
 
-vi.mock("@upstash/redis", () => {
-  // eslint-disable-next-line prefer-arrow-callback
-  function RedisCtor() { return redisMock; }
-  return { Redis: RedisCtor };
-});
+vi.mock("@/lib/kv", () => kvMock);
 
-vi.mock("@upstash/vector", () => {
-  // eslint-disable-next-line prefer-arrow-callback
-  function IndexCtor() { return vectorMock; }
-  return { Index: IndexCtor };
-});
+vi.mock("@/lib/vector", () => vectorMock);
 
 vi.mock("@/lib/scars", () => ({
   saveScar: vi.fn(),
@@ -115,7 +107,7 @@ function setupFetchSuccess(embeddings: number[][] = [[0.1, 0.2, 0.3]]) {
  *   2nd call → "vault:pending-creates"
  */
 function setupSmembers(vaultIndex: string[] = [], pendingCreates: string[] = []) {
-  redisMock.smembers
+  kvMock.smembers
     .mockResolvedValueOnce(vaultIndex)
     .mockResolvedValueOnce(pendingCreates);
 }
@@ -147,18 +139,17 @@ beforeEach(() => {
 
   // Redis defaults
   setupSmembers();
-  redisMock.get.mockResolvedValue(null);
-  redisMock.hgetall.mockResolvedValue(null);
-  redisMock.set.mockResolvedValue("OK");
-  redisMock.hset.mockResolvedValue(1);
-  redisMock.sadd.mockResolvedValue(1);
-  redisMock.del.mockResolvedValue(1);
-  redisMock.srem.mockResolvedValue(1);
+  kvMock.getJSON.mockResolvedValue(null);
+  kvMock.hgetall.mockResolvedValue(null);
+  kvMock.setJSON.mockResolvedValue("OK");
+  kvMock.hset.mockResolvedValue(1);
+  kvMock.sadd.mockResolvedValue(1);
+  kvMock.deleteKey.mockResolvedValue(1);
+  kvMock.srem.mockResolvedValue(1);
 
   // Vector defaults
-  vectorMock.query.mockResolvedValue([]);
-  vectorMock.upsert.mockResolvedValue(undefined);
-  vectorMock.delete.mockResolvedValue(undefined);
+  vectorMock.upsertVectors.mockResolvedValue(undefined);
+  vectorMock.deleteVectorsByPath.mockResolvedValue(undefined);
 
   setupMatter();
   setupFetchSuccess();
@@ -196,7 +187,7 @@ describe("empty vault", () => {
   it("writes vault:meta with zeros", async () => {
     await runSync();
 
-    expect(redisMock.hset).toHaveBeenCalledWith(
+    expect(kvMock.hset).toHaveBeenCalledWith(
       "vault:meta",
       expect.objectContaining({ totalNotes: "0", totalWords: "0" }),
     );
@@ -234,7 +225,7 @@ describe("new file", () => {
   it("stores note data via hset", async () => {
     await runSync();
 
-    expect(redisMock.hset).toHaveBeenCalledWith(
+    expect(kvMock.hset).toHaveBeenCalledWith(
       "vault:note:note-one.md",
       expect.objectContaining({
         name: "note-one",
@@ -244,10 +235,10 @@ describe("new file", () => {
     );
   });
 
-  it("stores the computed hash via set", async () => {
+  it("stores the computed hash via setJSON", async () => {
     await runSync();
 
-    expect(redisMock.set).toHaveBeenCalledWith(
+    expect(kvMock.setJSON).toHaveBeenCalledWith(
       "vault:hash:note-one.md",
       expect.any(String),
     );
@@ -256,7 +247,7 @@ describe("new file", () => {
   it("adds the relative path to vault:notes:index", async () => {
     await runSync();
 
-    expect(redisMock.sadd).toHaveBeenCalledWith(
+    expect(kvMock.sadd).toHaveBeenCalledWith(
       "vault:notes:index",
       "note-one.md",
     );
@@ -277,7 +268,7 @@ describe("new file", () => {
   it("assigns '(root)' folder for a top-level file", async () => {
     await runSync();
 
-    expect(redisMock.hset).toHaveBeenCalledWith(
+    expect(kvMock.hset).toHaveBeenCalledWith(
       "vault:note:note-one.md",
       expect.objectContaining({ folder: "(root)" }),
     );
@@ -291,7 +282,7 @@ describe("new file", () => {
     const result = await runSync();
 
     expect(result.created).toBe(1);
-    expect(redisMock.hset).toHaveBeenCalledWith(
+    expect(kvMock.hset).toHaveBeenCalledWith(
       "vault:note:journal/entry.md",
       expect.objectContaining({ folder: "journal" }),
     );
@@ -300,7 +291,7 @@ describe("new file", () => {
   it("stores modifiedAt as ISO string derived from stat.mtime", async () => {
     await runSync();
 
-    expect(redisMock.hset).toHaveBeenCalledWith(
+    expect(kvMock.hset).toHaveBeenCalledWith(
       "vault:note:note-one.md",
       expect.objectContaining({
         modifiedAt: MOCK_STAT.mtime.toISOString(),
@@ -333,11 +324,11 @@ describe("unchanged file", () => {
   it("increments unchanged to 1 when the stored hash matches", async () => {
     const hash = await getMatchingHash();
     // Reset smembers so the stable note appears already indexed
-    redisMock.smembers
+    kvMock.smembers
       .mockReset()
       .mockResolvedValueOnce(["stable.md"])
       .mockResolvedValueOnce([]);
-    redisMock.get.mockResolvedValue(hash);
+    kvMock.getJSON.mockResolvedValue(hash);
 
     const result = await runSync();
 
@@ -348,15 +339,15 @@ describe("unchanged file", () => {
 
   it("does not call hset for an unchanged note", async () => {
     const hash = await getMatchingHash();
-    redisMock.smembers
+    kvMock.smembers
       .mockReset()
       .mockResolvedValueOnce(["stable.md"])
       .mockResolvedValueOnce([]);
-    redisMock.get.mockResolvedValue(hash);
+    kvMock.getJSON.mockResolvedValue(hash);
 
     await runSync();
 
-    const noteCalls = redisMock.hset.mock.calls.filter(
+    const noteCalls = kvMock.hset.mock.calls.filter(
       (c) => c[0] !== "vault:meta",
     );
     expect(noteCalls).toHaveLength(0);
@@ -364,11 +355,11 @@ describe("unchanged file", () => {
 
   it("does not call fetch for an unchanged file", async () => {
     const hash = await getMatchingHash();
-    redisMock.smembers
+    kvMock.smembers
       .mockReset()
       .mockResolvedValueOnce(["stable.md"])
       .mockResolvedValueOnce([]);
-    redisMock.get.mockResolvedValue(hash);
+    kvMock.getJSON.mockResolvedValue(hash);
 
     await runSync();
 
@@ -388,11 +379,11 @@ describe("updated file", () => {
     (fs.readFileSync as unknown as Mock).mockReturnValue("new raw content");
     setupMatter(["#beta"], "new content");
     // Path exists in Redis with a stale hash
-    redisMock.smembers
+    kvMock.smembers
       .mockReset()
       .mockResolvedValueOnce(["changed.md"])
       .mockResolvedValueOnce([]);
-    redisMock.get.mockResolvedValue("old-hash-value");
+    kvMock.getJSON.mockResolvedValue("old-hash-value");
   });
 
   it("increments updated when the path was already indexed", async () => {
@@ -417,12 +408,12 @@ describe("deleted file", () => {
   /** Helper: set up a single ghost file that exists in Redis but not on disk. */
   function setupDeleteScenario(ghostPath: string, hgetallData: Record<string, string> | null) {
     (fs.readdirSync as unknown as Mock).mockReturnValue([]);
-    redisMock.smembers
+    kvMock.smembers
       .mockReset()
       .mockResolvedValueOnce([ghostPath])
       .mockResolvedValueOnce([]);
-    redisMock.get.mockResolvedValue(null);
-    redisMock.hgetall.mockResolvedValue(hgetallData);
+    kvMock.getJSON.mockResolvedValue(null);
+    kvMock.hgetall.mockResolvedValue(hgetallData);
   }
 
   it("increments deleted to 1 for a ghost file", async () => {
@@ -467,9 +458,9 @@ describe("deleted file", () => {
 
     await runSync();
 
-    expect(redisMock.del).toHaveBeenCalledWith("vault:note:removed.md");
-    expect(redisMock.del).toHaveBeenCalledWith("vault:hash:removed.md");
-    expect(redisMock.srem).toHaveBeenCalledWith("vault:notes:index", "removed.md");
+    expect(kvMock.deleteKey).toHaveBeenCalledWith("vault:note:removed.md");
+    expect(kvMock.deleteKey).toHaveBeenCalledWith("vault:hash:removed.md");
+    expect(kvMock.srem).toHaveBeenCalledWith("vault:notes:index", "removed.md");
   });
 
   it("skips saveScar but still deletes Redis keys when hgetall returns null", async () => {
@@ -478,7 +469,7 @@ describe("deleted file", () => {
     await runSync();
 
     expect(saveScar).not.toHaveBeenCalled();
-    expect(redisMock.del).toHaveBeenCalledWith("vault:note:no-data.md");
+    expect(kvMock.deleteKey).toHaveBeenCalledWith("vault:note:no-data.md");
   });
 
   it("falls back to path-derived name and '(root)' folder when noteData fields are falsy", async () => {
@@ -511,46 +502,43 @@ describe("deleted file", () => {
     );
   });
 
-  it("deletes stale vector chunks when they exist", async () => {
+  it("calls deleteVectorsByPath for deleted notes", async () => {
     setupDeleteScenario("chunked.md", {
       name: "chunked",
       folder: "(root)",
       tags: "[]",
       outgoing: "[]",
     });
-    vectorMock.query.mockResolvedValue([{ id: "chunked.md#chunk0" }]);
 
     await runSync();
 
-    expect(vectorMock.delete).toHaveBeenCalledWith(["chunked.md#chunk0"]);
+    expect(vectorMock.deleteVectorsByPath).toHaveBeenCalledWith("chunked.md");
   });
 
-  it("does not call vectorIndex.delete when query returns an empty result", async () => {
+  it("still deletes KV entries when deleteVectorsByPath is called", async () => {
     setupDeleteScenario("empty-chunks.md", {
       name: "empty-chunks",
       folder: "(root)",
       tags: "[]",
       outgoing: "[]",
     });
-    vectorMock.query.mockResolvedValue([]);
 
     await runSync();
 
-    expect(vectorMock.delete).not.toHaveBeenCalled();
-    expect(redisMock.del).toHaveBeenCalledWith("vault:note:empty-chunks.md");
+    expect(kvMock.deleteKey).toHaveBeenCalledWith("vault:note:empty-chunks.md");
   });
 
-  it("swallows vector query errors during delete cleanup and still deletes from Redis", async () => {
+  it("swallows vector delete errors and still deletes from KV", async () => {
     setupDeleteScenario("errored.md", {
       name: "errored",
       folder: "(root)",
       tags: "[]",
       outgoing: "[]",
     });
-    vectorMock.query.mockRejectedValue(new Error("index empty"));
+    vectorMock.deleteVectorsByPath.mockRejectedValueOnce(new Error("index empty"));
 
     await expect(runSync()).resolves.toMatchObject({ deleted: 1 });
-    expect(redisMock.del).toHaveBeenCalledWith("vault:note:errored.md");
+    expect(kvMock.deleteKey).toHaveBeenCalledWith("vault:note:errored.md");
   });
 });
 
@@ -560,11 +548,11 @@ describe("deleted file", () => {
 
 describe("pending creates", () => {
   it("writes a pending note to disk and increments pendingWritten", async () => {
-    redisMock.smembers
+    kvMock.smembers
       .mockReset()
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce(["pending/new-idea.md"]);
-    redisMock.hgetall.mockResolvedValue({ rawContent: "# New Idea\n\nContent here" });
+    kvMock.hgetall.mockResolvedValue({ rawContent: "# New Idea\n\nContent here" });
     (fs.existsSync as unknown as Mock).mockReturnValue(false);
 
     const result = await runSync();
@@ -579,67 +567,67 @@ describe("pending creates", () => {
       "# New Idea\n\nContent here",
       "utf-8",
     );
-    expect(redisMock.srem).toHaveBeenCalledWith(
+    expect(kvMock.srem).toHaveBeenCalledWith(
       "vault:pending-creates",
       "pending/new-idea.md",
     );
   });
 
   it("skips writeFileSync but still calls srem when the file already exists on disk", async () => {
-    redisMock.smembers
+    kvMock.smembers
       .mockReset()
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce(["exists.md"]);
-    redisMock.hgetall.mockResolvedValue({ rawContent: "# Already exists" });
+    kvMock.hgetall.mockResolvedValue({ rawContent: "# Already exists" });
     (fs.existsSync as unknown as Mock).mockReturnValue(true);
 
     const result = await runSync();
 
     expect(result.pendingWritten).toBe(0);
     expect(fs.writeFileSync).not.toHaveBeenCalled();
-    expect(redisMock.srem).toHaveBeenCalledWith("vault:pending-creates", "exists.md");
+    expect(kvMock.srem).toHaveBeenCalledWith("vault:pending-creates", "exists.md");
   });
 
   it("skips write AND srem when hgetall returns null (continue branch)", async () => {
-    redisMock.smembers
+    kvMock.smembers
       .mockReset()
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce(["missing-data.md"]);
-    redisMock.hgetall.mockResolvedValue(null);
+    kvMock.hgetall.mockResolvedValue(null);
 
     const result = await runSync();
 
     expect(result.pendingWritten).toBe(0);
     expect(fs.writeFileSync).not.toHaveBeenCalled();
-    const pendingRemoveCalls = redisMock.srem.mock.calls.filter(
+    const pendingRemoveCalls = kvMock.srem.mock.calls.filter(
       (c) => c[0] === "vault:pending-creates",
     );
     expect(pendingRemoveCalls).toHaveLength(0);
   });
 
   it("skips write AND srem when noteData exists but rawContent key is missing", async () => {
-    redisMock.smembers
+    kvMock.smembers
       .mockReset()
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce(["no-content.md"]);
-    redisMock.hgetall.mockResolvedValue({ name: "no-content" });
+    kvMock.hgetall.mockResolvedValue({ name: "no-content" });
 
     const result = await runSync();
 
     expect(result.pendingWritten).toBe(0);
     expect(fs.writeFileSync).not.toHaveBeenCalled();
-    const pendingRemoveCalls = redisMock.srem.mock.calls.filter(
+    const pendingRemoveCalls = kvMock.srem.mock.calls.filter(
       (c) => c[0] === "vault:pending-creates",
     );
     expect(pendingRemoveCalls).toHaveLength(0);
   });
 
   it("swallows mkdirSync errors and still calls srem (error is outside the try/catch)", async () => {
-    redisMock.smembers
+    kvMock.smembers
       .mockReset()
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce(["blocked.md"]);
-    redisMock.hgetall.mockResolvedValue({ rawContent: "content" });
+    kvMock.hgetall.mockResolvedValue({ rawContent: "content" });
     (fs.existsSync as unknown as Mock).mockReturnValue(false);
     (fs.mkdirSync as unknown as Mock).mockImplementation(() => {
       throw new Error("EACCES: permission denied");
@@ -649,18 +637,18 @@ describe("pending creates", () => {
     const result = await runSync();
 
     expect(result.pendingWritten).toBe(0);
-    expect(redisMock.srem).toHaveBeenCalledWith(
+    expect(kvMock.srem).toHaveBeenCalledWith(
       "vault:pending-creates",
       "blocked.md",
     );
   });
 
   it("handles a root-level pending note (no subdirectory)", async () => {
-    redisMock.smembers
+    kvMock.smembers
       .mockReset()
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce(["flat.md"]);
-    redisMock.hgetall.mockResolvedValue({ rawContent: "# Flat" });
+    kvMock.hgetall.mockResolvedValue({ rawContent: "# Flat" });
     (fs.existsSync as unknown as Mock).mockReturnValue(false);
 
     const result = await runSync();
@@ -686,8 +674,8 @@ describe("vector upsert", () => {
     ]);
     (fs.readFileSync as unknown as Mock).mockReturnValue("raw text");
     setupMatter(["#vec"], content);
-    redisMock.smembers.mockReset().mockResolvedValueOnce([]).mockResolvedValueOnce([]);
-    redisMock.get.mockResolvedValue(null);
+    kvMock.smembers.mockReset().mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    kvMock.getJSON.mockResolvedValue(null);
   }
 
   it("calls the Voyage API when VOYAGE_API_KEY is set", async () => {
@@ -724,13 +712,13 @@ describe("vector upsert", () => {
     expect(result.vectorsUpserted).toBe(1);
   });
 
-  it("calls vectorIndex.upsert with the correct metadata shape", async () => {
+  it("calls upsertVectors with the correct metadata shape", async () => {
     setupOneNewFile();
     setupFetchSuccess([[0.5, 0.6, 0.7]]);
 
     await runSync();
 
-    expect(vectorMock.upsert).toHaveBeenCalledWith(
+    expect(vectorMock.upsertVectors).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({
           id: "vectored.md#chunk0",
@@ -757,36 +745,24 @@ describe("vector upsert", () => {
     expect(result.vectorsUpserted).toBe(0);
   });
 
-  it("purges stale vector chunks before upserting fresh ones", async () => {
+  it("calls deleteVectorsByPath before upserting for updated files", async () => {
     setupOneNewFile();
     setupFetchSuccess([[0.1, 0.2]]);
-    vectorMock.query.mockResolvedValue([{ id: "vectored.md#chunk0" }]);
 
     await runSync();
 
-    expect(vectorMock.delete).toHaveBeenCalledWith(["vectored.md#chunk0"]);
-    expect(vectorMock.upsert).toHaveBeenCalled();
+    expect(vectorMock.deleteVectorsByPath).toHaveBeenCalledWith("vectored.md");
+    expect(vectorMock.upsertVectors).toHaveBeenCalled();
   });
 
-  it("does not call vectorIndex.delete when old query returns empty", async () => {
+  it("continues processing when deleteVectorsByPath throws", async () => {
     setupOneNewFile();
     setupFetchSuccess([[0.1, 0.2]]);
-    vectorMock.query.mockResolvedValue([]);
-
-    await runSync();
-
-    expect(vectorMock.delete).not.toHaveBeenCalled();
-    expect(vectorMock.upsert).toHaveBeenCalled();
-  });
-
-  it("continues processing (upserts) when the old-chunk query throws", async () => {
-    setupOneNewFile();
-    setupFetchSuccess([[0.1, 0.2]]);
-    vectorMock.query.mockRejectedValue(new Error("index empty"));
+    vectorMock.deleteVectorsByPath.mockRejectedValueOnce(new Error("index empty"));
 
     // Inner try/catch swallows the error; upsert should still run
     await expect(runSync()).resolves.toBeDefined();
-    expect(vectorMock.upsert).toHaveBeenCalled();
+    expect(vectorMock.upsertVectors).toHaveBeenCalled();
   });
 
   it("throws when the Voyage API returns a non-ok HTTP status", async () => {
@@ -824,7 +800,7 @@ describe("vector upsert", () => {
     const result = await runSync();
 
     expect(result.vectorsUpserted).toBe(3);
-    expect(vectorMock.upsert).toHaveBeenCalledWith(
+    expect(vectorMock.upsertVectors).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({ id: "vectored.md#chunk0" }),
         expect.objectContaining({ id: "vectored.md#chunk1" }),
@@ -898,16 +874,16 @@ describe("SyncResult totals", () => {
       text: async () => "",
     });
 
-    redisMock.smembers
+    kvMock.smembers
       .mockReset()
       .mockResolvedValueOnce(["note-b.md", "note-c.md", "ghost.md"])
       .mockResolvedValueOnce([]);
     // Hash responses: note-a → null, note-b → matching, note-c → stale
-    redisMock.get
+    kvMock.getJSON
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(noteB_hash)
       .mockResolvedValueOnce("stale-c");
-    redisMock.hgetall.mockResolvedValue({
+    kvMock.hgetall.mockResolvedValue({
       name: "ghost",
       folder: "(root)",
       tags: "[]",
@@ -926,11 +902,11 @@ describe("SyncResult totals", () => {
   });
 
   it("reports pendingWritten in addition to other counts", async () => {
-    redisMock.smembers
+    kvMock.smembers
       .mockReset()
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce(["to-write.md"]);
-    redisMock.hgetall.mockResolvedValue({ rawContent: "# To Write" });
+    kvMock.hgetall.mockResolvedValue({ rawContent: "# To Write" });
     (fs.existsSync as unknown as Mock).mockReturnValue(false);
 
     const result = await runSync();
@@ -943,7 +919,7 @@ describe("SyncResult totals", () => {
   it("writes a valid ISO lastSyncAt timestamp to vault:meta", async () => {
     await runSync();
 
-    const metaCall = redisMock.hset.mock.calls.find(
+    const metaCall = kvMock.hset.mock.calls.find(
       (c) => c[0] === "vault:meta",
     );
     expect(metaCall).toBeDefined();
@@ -1028,7 +1004,7 @@ describe("wikilink extraction", () => {
 
     await runSync();
 
-    expect(redisMock.hset).toHaveBeenCalledWith(
+    expect(kvMock.hset).toHaveBeenCalledWith(
       "vault:note:links.md",
       expect.objectContaining({
         outgoing: JSON.stringify(["Note A", "Note B"]),
@@ -1041,7 +1017,7 @@ describe("wikilink extraction", () => {
 
     await runSync();
 
-    expect(redisMock.hset).toHaveBeenCalledWith(
+    expect(kvMock.hset).toHaveBeenCalledWith(
       "vault:note:links.md",
       expect.objectContaining({ outgoing: JSON.stringify(["Target"]) }),
     );
@@ -1052,7 +1028,7 @@ describe("wikilink extraction", () => {
 
     await runSync();
 
-    expect(redisMock.hset).toHaveBeenCalledWith(
+    expect(kvMock.hset).toHaveBeenCalledWith(
       "vault:note:links.md",
       expect.objectContaining({ outgoing: JSON.stringify(["Page"]) }),
     );
@@ -1063,7 +1039,7 @@ describe("wikilink extraction", () => {
 
     await runSync();
 
-    expect(redisMock.hset).toHaveBeenCalledWith(
+    expect(kvMock.hset).toHaveBeenCalledWith(
       "vault:note:links.md",
       expect.objectContaining({ outgoing: JSON.stringify([]) }),
     );
@@ -1082,15 +1058,15 @@ describe("tag extraction via frontmatter keys", () => {
     ]);
     (fs.readFileSync as unknown as Mock).mockReturnValue("raw");
     (matter as unknown as Mock).mockReturnValue({ data, content: "body" });
-    redisMock.smembers.mockReset().mockResolvedValueOnce([]).mockResolvedValueOnce([]);
-    redisMock.get.mockResolvedValue(null);
+    kvMock.smembers.mockReset().mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    kvMock.getJSON.mockResolvedValue(null);
     return runSync();
   }
 
   it("extracts tags from the 'tags' array key", async () => {
     await syncWithFrontmatter({ tags: ["design", "#ui"] });
 
-    expect(redisMock.hset).toHaveBeenCalledWith(
+    expect(kvMock.hset).toHaveBeenCalledWith(
       "vault:note:tagged.md",
       expect.objectContaining({ tags: JSON.stringify(["#design", "#ui"]) }),
     );
@@ -1099,7 +1075,7 @@ describe("tag extraction via frontmatter keys", () => {
   it("extracts tags from the 'tag' string key", async () => {
     await syncWithFrontmatter({ tag: "writing" });
 
-    expect(redisMock.hset).toHaveBeenCalledWith(
+    expect(kvMock.hset).toHaveBeenCalledWith(
       "vault:note:tagged.md",
       expect.objectContaining({ tags: JSON.stringify(["#writing"]) }),
     );
@@ -1108,7 +1084,7 @@ describe("tag extraction via frontmatter keys", () => {
   it("extracts tags from the 'Topics' key", async () => {
     await syncWithFrontmatter({ Topics: ["research", "ai"] });
 
-    expect(redisMock.hset).toHaveBeenCalledWith(
+    expect(kvMock.hset).toHaveBeenCalledWith(
       "vault:note:tagged.md",
       expect.objectContaining({ tags: JSON.stringify(["#research", "#ai"]) }),
     );
@@ -1117,7 +1093,7 @@ describe("tag extraction via frontmatter keys", () => {
   it("extracts tags from the 'topics' space-separated string key", async () => {
     await syncWithFrontmatter({ topics: "one two" });
 
-    expect(redisMock.hset).toHaveBeenCalledWith(
+    expect(kvMock.hset).toHaveBeenCalledWith(
       "vault:note:tagged.md",
       expect.objectContaining({ tags: JSON.stringify(["#one", "#two"]) }),
     );
@@ -1126,7 +1102,7 @@ describe("tag extraction via frontmatter keys", () => {
   it("extracts comma-separated tags from a string value", async () => {
     await syncWithFrontmatter({ tags: "alpha, beta, gamma" });
 
-    expect(redisMock.hset).toHaveBeenCalledWith(
+    expect(kvMock.hset).toHaveBeenCalledWith(
       "vault:note:tagged.md",
       expect.objectContaining({
         tags: JSON.stringify(["#alpha", "#beta", "#gamma"]),
@@ -1137,7 +1113,7 @@ describe("tag extraction via frontmatter keys", () => {
   it("preserves existing # prefix on tags", async () => {
     await syncWithFrontmatter({ tags: ["#already-prefixed"] });
 
-    expect(redisMock.hset).toHaveBeenCalledWith(
+    expect(kvMock.hset).toHaveBeenCalledWith(
       "vault:note:tagged.md",
       expect.objectContaining({ tags: JSON.stringify(["#already-prefixed"]) }),
     );
@@ -1146,7 +1122,7 @@ describe("tag extraction via frontmatter keys", () => {
   it("stores an empty tags array when no recognised tag key is present", async () => {
     await syncWithFrontmatter({});
 
-    expect(redisMock.hset).toHaveBeenCalledWith(
+    expect(kvMock.hset).toHaveBeenCalledWith(
       "vault:note:tagged.md",
       expect.objectContaining({ tags: JSON.stringify([]) }),
     );
@@ -1155,7 +1131,7 @@ describe("tag extraction via frontmatter keys", () => {
   it("returns empty tags for a null tag value", async () => {
     await syncWithFrontmatter({ tags: null });
 
-    expect(redisMock.hset).toHaveBeenCalledWith(
+    expect(kvMock.hset).toHaveBeenCalledWith(
       "vault:note:tagged.md",
       expect.objectContaining({ tags: JSON.stringify([]) }),
     );

@@ -17,6 +17,9 @@ export interface MemoryStore {
 const KV_KEY = "memory:entries";
 const MAX_ENTRIES = 50;
 
+// Serialize concurrent writes to prevent read-modify-write races on the blob.
+let memoryMutex: Promise<void> = Promise.resolve();
+
 export async function loadMemory(): Promise<MemoryStore> {
   try {
     const data = await kv.getJSON<MemoryStore>(KV_KEY);
@@ -37,38 +40,41 @@ export async function saveMemory(store: MemoryStore): Promise<void> {
 export async function addMemory(
   entry: Omit<MemoryEntry, "id" | "createdAt" | "lastReferencedAt" | "referenceCount">
 ): Promise<void> {
-  const store = await loadMemory();
-  const now = new Date().toISOString();
+  memoryMutex = memoryMutex.then(async () => {
+    const store = await loadMemory();
+    const now = new Date().toISOString();
 
-  // Deduplicate: skip if near-identical content already exists (case-insensitive)
-  const normalised = entry.content.toLowerCase().trim();
-  const duplicate = store.entries.find(
-    (e) => e.content.toLowerCase().trim() === normalised
-  );
-  if (duplicate) {
-    duplicate.referenceCount += 1;
-    duplicate.lastReferencedAt = now;
+    // Deduplicate: skip if near-identical content already exists (case-insensitive)
+    const normalised = entry.content.toLowerCase().trim();
+    const duplicate = store.entries.find(
+      (e) => e.content.toLowerCase().trim() === normalised
+    );
+    if (duplicate) {
+      duplicate.referenceCount += 1;
+      duplicate.lastReferencedAt = now;
+      await saveMemory(store);
+      return;
+    }
+
+    const newEntry: MemoryEntry = {
+      id: crypto.randomUUID(),
+      ...entry,
+      createdAt: now,
+      lastReferencedAt: now,
+      referenceCount: 1,
+    };
+
+    store.entries.push(newEntry);
+
+    // Prune to MAX_ENTRIES — remove least-referenced entries first
+    if (store.entries.length > MAX_ENTRIES) {
+      store.entries.sort((a, b) => b.referenceCount - a.referenceCount);
+      store.entries = store.entries.slice(0, MAX_ENTRIES);
+    }
+
     await saveMemory(store);
-    return;
-  }
-
-  const newEntry: MemoryEntry = {
-    id: crypto.randomUUID(),
-    ...entry,
-    createdAt: now,
-    lastReferencedAt: now,
-    referenceCount: 1,
-  };
-
-  store.entries.push(newEntry);
-
-  // Prune to MAX_ENTRIES — remove least-referenced entries first
-  if (store.entries.length > MAX_ENTRIES) {
-    store.entries.sort((a, b) => b.referenceCount - a.referenceCount);
-    store.entries = store.entries.slice(0, MAX_ENTRIES);
-  }
-
-  await saveMemory(store);
+  }).catch((err) => console.error("[memory addMemory]", err));
+  await memoryMutex;
 }
 
 export async function getRelevantMemories(query: string, limit = 10): Promise<MemoryEntry[]> {
@@ -124,17 +130,23 @@ export async function getAllMemories(): Promise<MemoryEntry[]> {
 }
 
 export async function deleteMemory(id: string): Promise<void> {
-  const store = await loadMemory();
-  store.entries = store.entries.filter((e) => e.id !== id);
-  await saveMemory(store);
+  memoryMutex = memoryMutex.then(async () => {
+    const store = await loadMemory();
+    store.entries = store.entries.filter((e) => e.id !== id);
+    await saveMemory(store);
+  }).catch((err) => console.error("[memory deleteMemory]", err));
+  await memoryMutex;
 }
 
 export async function touchMemory(id: string): Promise<void> {
-  const store = await loadMemory();
-  const entry = store.entries.find((e) => e.id === id);
-  if (entry) {
-    entry.referenceCount += 1;
-    entry.lastReferencedAt = new Date().toISOString();
-    await saveMemory(store);
-  }
+  memoryMutex = memoryMutex.then(async () => {
+    const store = await loadMemory();
+    const entry = store.entries.find((e) => e.id === id);
+    if (entry) {
+      entry.referenceCount += 1;
+      entry.lastReferencedAt = new Date().toISOString();
+      await saveMemory(store);
+    }
+  }).catch((err) => console.error("[memory touchMemory]", err));
+  await memoryMutex;
 }

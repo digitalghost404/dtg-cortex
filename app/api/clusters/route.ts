@@ -3,6 +3,7 @@ import { fetchAllVectors, indexHasItems } from "@/lib/vector";
 import { getAllNotes } from "@/lib/vault";
 import { computeDecayScores } from "@/lib/decay";
 import { getSynapticWeights } from "@/lib/synaptic-weights";
+import { getWithTTL, setWithTTL } from "@/lib/kv";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -347,11 +348,24 @@ function autoLabel(noteNames: string[]): string {
 }
 
 // ---------------------------------------------------------------------------
+// Cache key and TTL
+// ---------------------------------------------------------------------------
+
+const CACHE_KEY = "cache:clusters";
+const CACHE_TTL_SEC = 3600; // 1 hour
+
+// ---------------------------------------------------------------------------
 // GET /api/clusters
 // ---------------------------------------------------------------------------
 
 export async function GET(): Promise<NextResponse<ClustersResponse | { error: string }>> {
   try {
+    // Return cached result if available — t-SNE is expensive.
+    const cached = await getWithTTL(CACHE_KEY);
+    if (cached) {
+      return NextResponse.json(JSON.parse(cached) as ClustersResponse);
+    }
+
     const hasItems = await indexHasItems();
     if (!hasItems) {
       return NextResponse.json({ error: "Index not built yet. Run /api/index first." }, { status: 503 });
@@ -453,7 +467,15 @@ export async function GET(): Promise<NextResponse<ClustersResponse | { error: st
     // Compute synaptic weights for edge rendering
     const synapticWeights = await getSynapticWeights().catch(() => ({}));
 
-    return NextResponse.json({ points, clusters, synapticWeights });
+    const result = { points, clusters, synapticWeights };
+
+    // Populate cache for subsequent requests — fire-and-forget so a Redis
+    // hiccup never prevents a response from being returned.
+    setWithTTL(CACHE_KEY, JSON.stringify(result), CACHE_TTL_SEC).catch((err) =>
+      console.error("[clusters cache write]", err)
+    );
+
+    return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json({ error: message }, { status: 500 });

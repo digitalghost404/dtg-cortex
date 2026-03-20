@@ -10,7 +10,7 @@ interface ShareData {
 }
 
 function generateToken(): string {
-  return crypto.randomBytes(9).toString("base64url"); // 12 chars
+  return crypto.randomBytes(24).toString("base64url"); // 32 chars, 192-bit entropy
 }
 
 /**
@@ -30,10 +30,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Secret notes cannot be shared" }, { status: 403 });
   }
 
+  const MAX_EXPIRY_HOURS = 168;
+  const safeExpiresIn = (typeof expiresIn === "number" && expiresIn > 0)
+    ? Math.min(expiresIn, MAX_EXPIRY_HOURS)
+    : 72;
+
   const token = generateToken();
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + expiresIn * 60 * 60 * 1000);
-  const ttlSec = expiresIn * 60 * 60;
+  const expiresAt = new Date(now.getTime() + safeExpiresIn * 60 * 60 * 1000);
+  const ttlSec = safeExpiresIn * 60 * 60;
 
   const shareData: ShareData = {
     notePath,

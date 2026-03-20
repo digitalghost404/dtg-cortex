@@ -107,6 +107,25 @@ export async function setWithTTL(key: string, value: string, ttlSec: number): Pr
 }
 
 /**
+ * Read a value previously written with setWithTTL.
+ * In Redis mode the TTL is managed natively, so this is a plain GET.
+ * In filesystem mode the expiry envelope is checked and unwrapped.
+ * Returns null when the key is absent or has expired.
+ */
+export async function getWithTTL(key: string): Promise<string | null> {
+  if (isRedisMode) {
+    return getRedis().get<string>(key);
+  }
+  const data = fsRead<{ value: string; expiresAt?: number }>(key);
+  if (!data) return null;
+  if (data.expiresAt && Date.now() > data.expiresAt) {
+    fsDelete(key);
+    return null;
+  }
+  return data.value;
+}
+
+/**
  * Atomic set-if-not-exists with TTL. Returns true if the key was set (did not exist).
  * Used for TOTP replay prevention.
  */
@@ -176,8 +195,8 @@ export async function hdel(key: string, ...fields: string[]): Promise<void> {
 
 export async function sadd(key: string, ...members: string[]): Promise<void> {
   if (isRedisMode) {
-    for (const m of members) {
-      await getRedis().sadd(key, m);
+    if (members.length > 0) {
+      await getRedis().sadd(key, members[0], ...members.slice(1));
     }
     return;
   }

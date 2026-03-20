@@ -21,6 +21,10 @@ export interface LineageStore {
 }
 
 const KV_KEY = "lineage:entries";
+const MAX_LINEAGE_ENTRIES = 1000;
+
+// Serialize concurrent writes to prevent read-modify-write races on the blob.
+let lineageMutex: Promise<void> = Promise.resolve();
 
 export async function loadLineage(): Promise<LineageStore> {
   try {
@@ -31,10 +35,9 @@ export async function loadLineage(): Promise<LineageStore> {
   }
 }
 
-const MAX_LINEAGE_ENTRIES = 1000;
-
 export async function saveLineageEntry(entry: LineageEntry): Promise<void> {
-  try {
+  // Chain writes so each one waits for the previous to finish before reading.
+  lineageMutex = lineageMutex.then(async () => {
     const store = await loadLineage();
     store.entries.push(entry);
     // Prune oldest entries if over limit
@@ -42,9 +45,8 @@ export async function saveLineageEntry(entry: LineageEntry): Promise<void> {
       store.entries = store.entries.slice(-MAX_LINEAGE_ENTRIES);
     }
     await kv.setJSON(KV_KEY, store);
-  } catch (err) {
-    console.error("[lineage saveLineageEntry]", err);
-  }
+  }).catch((err) => console.error("[lineage saveLineageEntry]", err));
+  await lineageMutex;
 }
 
 export async function getLineageStats(): Promise<{
