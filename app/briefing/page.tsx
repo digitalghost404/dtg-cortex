@@ -726,7 +726,7 @@ export default function BriefingPage() {
                     justifyContent: "center",
                   }}
                 >
-                  {dates.slice(Math.max(0, currentIdx - 2), currentIdx + 3).map((d) => (
+                  {dates.slice(Math.max(0, currentIdx - 2), currentIdx + 3).reverse().map((d) => (
                     <button
                       key={d}
                       onClick={() => {
