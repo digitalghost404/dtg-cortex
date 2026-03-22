@@ -6,6 +6,7 @@ SERVICE_DIR="$HOME/.config/systemd/user"
 SERVICE_FILE="$SERVICE_DIR/$SERVICE_NAME.service"
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 NPM_PATH="$(command -v npm)"
+NODE_BIN_DIR="$(dirname "$(command -v node)")"
 
 if [ -z "$NPM_PATH" ]; then
   echo "Error: npm not found in PATH"
@@ -29,6 +30,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=$PROJECT_DIR
+Environment=PATH=$NODE_BIN_DIR:/usr/local/bin:/usr/bin:/bin
 ExecStart=/bin/bash -c 'set -a && source $PROJECT_DIR/.env.local && set +a && exec $NPM_PATH run sync:watch'
 Restart=on-failure
 RestartSec=10
