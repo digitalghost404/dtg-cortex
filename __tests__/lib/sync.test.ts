@@ -589,7 +589,7 @@ describe("pending creates", () => {
     expect(kvMock.srem).toHaveBeenCalledWith("vault:pending-creates", "exists.md");
   });
 
-  it("skips write AND srem when hgetall returns null (continue branch)", async () => {
+  it("skips write but calls srem when hgetall returns null (cleanup orphan)", async () => {
     kvMock.smembers
       .mockReset()
       .mockResolvedValueOnce([])
@@ -600,13 +600,13 @@ describe("pending creates", () => {
 
     expect(result.pendingWritten).toBe(0);
     expect(fs.writeFileSync).not.toHaveBeenCalled();
-    const pendingRemoveCalls = kvMock.srem.mock.calls.filter(
-      (c) => c[0] === "vault:pending-creates",
+    expect(kvMock.srem).toHaveBeenCalledWith(
+      "vault:pending-creates",
+      "missing-data.md",
     );
-    expect(pendingRemoveCalls).toHaveLength(0);
   });
 
-  it("skips write AND srem when noteData exists but rawContent key is missing", async () => {
+  it("skips write but calls srem when noteData has no rawContent and no content", async () => {
     kvMock.smembers
       .mockReset()
       .mockResolvedValueOnce([])
@@ -617,10 +617,10 @@ describe("pending creates", () => {
 
     expect(result.pendingWritten).toBe(0);
     expect(fs.writeFileSync).not.toHaveBeenCalled();
-    const pendingRemoveCalls = kvMock.srem.mock.calls.filter(
-      (c) => c[0] === "vault:pending-creates",
+    expect(kvMock.srem).toHaveBeenCalledWith(
+      "vault:pending-creates",
+      "no-content.md",
     );
-    expect(pendingRemoveCalls).toHaveLength(0);
   });
 
   it("swallows mkdirSync errors and still calls srem (error is outside the try/catch)", async () => {
@@ -1136,6 +1136,27 @@ describe("tag extraction via frontmatter keys", () => {
       "vault:note:tagged.md",
       expect.objectContaining({ tags: JSON.stringify([]) }),
     );
+  });
+});
+
+// ===========================================================================
+// runSync with skipPending
+// ===========================================================================
+
+describe("runSync with skipPending", () => {
+  it("skips pending-creates block when skipPending is true", async () => {
+    kvMock.smembers.mockReset();
+    (fs.readdirSync as unknown as Mock).mockReturnValue([]);
+    kvMock.smembers
+      .mockResolvedValueOnce([])     // vault:notes:index
+      .mockResolvedValueOnce(["should-be-skipped.md"]); // vault:pending-creates (should NOT be called)
+
+    const result = await runSync({ skipPending: true });
+
+    expect(result.pendingWritten).toBe(0);
+    // smembers is called once for vault:notes:index, but NOT for vault:pending-creates
+    expect(kvMock.smembers).toHaveBeenCalledTimes(1);
+    expect(kvMock.smembers).toHaveBeenCalledWith("vault:notes:index");
   });
 });
 

@@ -151,7 +151,9 @@ export async function pullPending(): Promise<{ written: number; paths: string[] 
 // Main sync function
 // ---------------------------------------------------------------------------
 
-export async function runSync(): Promise<SyncResult> {
+export async function runSync(
+  options: { skipPending?: boolean } = {},
+): Promise<SyncResult> {
   const VAULT_PATH = process.env.VAULT_PATH;
   const VOYAGE_API_KEY = process.env.VOYAGE_API_KEY;
 
@@ -300,27 +302,55 @@ export async function runSync(): Promise<SyncResult> {
     }
   }
 
-  // Handle pending creates
-  const pendingCreates = await kv.smembers("vault:pending-creates");
+  // Handle pending creates (skipped in watch mode where pullPending handles this)
   let pendingWritten = 0;
-  for (const pendingPath of pendingCreates) {
-    const noteData = await kv.hgetall<Record<string, string>>(`vault:note:${pendingPath}`);
-    if (!noteData || !noteData.rawContent) continue;
-
-    const diskPath = path.join(VAULT_PATH, pendingPath);
-    const dir = path.dirname(diskPath);
-
-    try {
-      fs.mkdirSync(dir, { recursive: true });
-      if (!fs.existsSync(diskPath)) {
-        fs.writeFileSync(diskPath, noteData.rawContent, "utf-8");
-        pendingWritten++;
+  if (!options.skipPending) {
+    const pendingCreates = await kv.smembers("vault:pending-creates");
+    for (const pendingPath of pendingCreates) {
+      const noteData = await kv.hgetall<Record<string, string>>(`vault:note:${pendingPath}`);
+      if (!noteData) {
+        await kv.srem("vault:pending-creates", pendingPath);
+        continue;
       }
-    } catch (err) {
-      console.error(`  Failed to write pending note ${pendingPath}:`, err);
-    }
 
-    await kv.srem("vault:pending-creates", pendingPath);
+      // Prefer rawContent; fall back to reconstructing frontmatter
+      let fileContent = noteData.rawContent;
+      if (!fileContent && noteData.content) {
+        const name = noteData.name || path.basename(pendingPath, ".md");
+        const tags: string[] = noteData.tags ? JSON.parse(noteData.tags) : [];
+        const created = noteData.modifiedAt?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+        const frontmatter = [
+          "---",
+          `title: "${name}"`,
+          `created: ${created}`,
+          "source: cortex-chat",
+          "tags:",
+          ...tags.map((t: string) => `  - ${t.replace(/^#/, "")}`),
+          "---",
+        ].join("\n");
+        fileContent = frontmatter + "\n\n" + noteData.content + "\n";
+      }
+
+      if (!fileContent) {
+        await kv.srem("vault:pending-creates", pendingPath);
+        continue;
+      }
+
+      const diskPath = path.join(VAULT_PATH, pendingPath);
+      const dir = path.dirname(diskPath);
+
+      try {
+        fs.mkdirSync(dir, { recursive: true });
+        if (!fs.existsSync(diskPath)) {
+          fs.writeFileSync(diskPath, fileContent, "utf-8");
+          pendingWritten++;
+        }
+      } catch (err) {
+        console.error(`  Failed to write pending note ${pendingPath}:`, err);
+      }
+
+      await kv.srem("vault:pending-creates", pendingPath);
+    }
   }
 
   // Update vault metadata
