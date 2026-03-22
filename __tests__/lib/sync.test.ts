@@ -1198,6 +1198,18 @@ describe("pullPending", () => {
     expect(fs.writeFileSync).not.toHaveBeenCalled();
   });
 
+  it("blocks path traversal attempts", async () => {
+    kvMock.smembers.mockReset();
+    kvMock.smembers.mockResolvedValueOnce(["../../etc/malicious.md"]);
+    kvMock.hgetall.mockResolvedValueOnce({ rawContent: "bad content" });
+
+    const result = await pullPending();
+
+    expect(result.written).toBe(0);
+    expect(fs.writeFileSync).not.toHaveBeenCalled();
+    expect(kvMock.srem).toHaveBeenCalledWith("vault:pending-creates", "../../etc/malicious.md");
+  });
+
   it("reconstructs frontmatter when rawContent is missing", async () => {
     kvMock.smembers.mockReset().mockResolvedValueOnce(["cortex-notes/reconstructed.md"]);
     kvMock.hgetall.mockResolvedValueOnce({

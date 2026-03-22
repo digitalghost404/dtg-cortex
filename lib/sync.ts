@@ -91,6 +91,13 @@ export async function pullPending(): Promise<{ written: number; paths: string[] 
 
     const diskPath = path.join(VAULT_PATH, relativePath);
 
+    // Guard against path traversal
+    if (!diskPath.startsWith(VAULT_PATH + path.sep) && diskPath !== VAULT_PATH) {
+      console.error(`[pullPending] Path traversal blocked: ${relativePath}`);
+      await kv.srem("vault:pending-creates", relativePath);
+      continue;
+    }
+
     // Skip if file already exists on disk
     if (fs.existsSync(diskPath)) {
       await kv.srem("vault:pending-creates", relativePath);
