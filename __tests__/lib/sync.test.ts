@@ -62,9 +62,10 @@ vi.mock("gray-matter");
 // Imports (after mocks are registered)
 // ---------------------------------------------------------------------------
 
-import { runSync } from "@/lib/sync";
+import { runSync, pullPending } from "@/lib/sync";
 import { saveScar } from "@/lib/scars";
 import fs from "fs";
+import path from "path";
 import matter from "gray-matter";
 
 // ---------------------------------------------------------------------------
@@ -1134,6 +1135,86 @@ describe("tag extraction via frontmatter keys", () => {
     expect(kvMock.hset).toHaveBeenCalledWith(
       "vault:note:tagged.md",
       expect.objectContaining({ tags: JSON.stringify([]) }),
+    );
+  });
+});
+
+// ===========================================================================
+// pullPending
+// ===========================================================================
+
+describe("pullPending", () => {
+  it("returns zero when no pending creates exist", async () => {
+    kvMock.smembers.mockReset().mockResolvedValueOnce([]);
+
+    const result = await pullPending();
+
+    expect(result).toEqual({ written: 0, paths: [] });
+    expect(kvMock.smembers).toHaveBeenCalledWith("vault:pending-creates");
+  });
+
+  it("writes pending note to disk and sets hash", async () => {
+    kvMock.smembers.mockReset().mockResolvedValueOnce(["cortex-notes/test.md"]);
+    kvMock.hgetall.mockResolvedValueOnce({
+      name: "test",
+      rawContent: "---\ntitle: test\n---\nHello",
+      content: "Hello",
+      tags: "[]",
+      outgoing: "[]",
+      folder: "cortex-notes",
+      words: "1",
+      modifiedAt: "2026-03-22T00:00:00.000Z",
+      size: "25",
+    });
+    (fs.existsSync as unknown as Mock).mockReturnValueOnce(false);
+
+    const result = await pullPending();
+
+    expect(result.written).toBe(1);
+    expect(result.paths).toEqual(["cortex-notes/test.md"]);
+    expect(fs.mkdirSync).toHaveBeenCalled();
+    expect(fs.writeFileSync).toHaveBeenCalledWith(
+      path.join(VAULT, "cortex-notes/test.md"),
+      "---\ntitle: test\n---\nHello",
+      "utf-8",
+    );
+    // Hash must be set so runSync skips it
+    expect(kvMock.setJSON).toHaveBeenCalledWith(
+      "vault:hash:cortex-notes/test.md",
+      expect.any(String),
+    );
+    expect(kvMock.srem).toHaveBeenCalledWith("vault:pending-creates", "cortex-notes/test.md");
+  });
+
+  it("skips notes that already exist on disk", async () => {
+    kvMock.smembers.mockReset().mockResolvedValueOnce(["existing.md"]);
+    kvMock.hgetall.mockResolvedValueOnce({ rawContent: "content" });
+    (fs.existsSync as unknown as Mock).mockReturnValueOnce(true);
+
+    const result = await pullPending();
+
+    expect(result.written).toBe(0);
+    expect(result.paths).toEqual([]);
+    expect(fs.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it("reconstructs frontmatter when rawContent is missing", async () => {
+    kvMock.smembers.mockReset().mockResolvedValueOnce(["cortex-notes/reconstructed.md"]);
+    kvMock.hgetall.mockResolvedValueOnce({
+      name: "reconstructed",
+      content: "Some body text",
+      tags: JSON.stringify(["#test"]),
+      modifiedAt: "2026-03-22T00:00:00.000Z",
+    });
+    (fs.existsSync as unknown as Mock).mockReturnValueOnce(false);
+
+    const result = await pullPending();
+
+    expect(result.written).toBe(1);
+    expect(fs.writeFileSync).toHaveBeenCalledWith(
+      expect.stringContaining("reconstructed.md"),
+      expect.stringContaining("title: \"reconstructed\""),
+      "utf-8",
     );
   });
 });

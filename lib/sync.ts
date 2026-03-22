@@ -69,6 +69,78 @@ async function embedTexts(inputs: string[], voyageApiKey: string): Promise<numbe
 }
 
 // ---------------------------------------------------------------------------
+// Lightweight pending-creates pull (used by watch mode on 15s interval)
+// ---------------------------------------------------------------------------
+
+export async function pullPending(): Promise<{ written: number; paths: string[] }> {
+  const VAULT_PATH = process.env.VAULT_PATH;
+  if (!VAULT_PATH) throw new Error("VAULT_PATH is not set");
+
+  const pending = await kv.smembers("vault:pending-creates");
+  if (pending.length === 0) return { written: 0, paths: [] };
+
+  let written = 0;
+  const paths: string[] = [];
+
+  for (const relativePath of pending) {
+    const noteData = await kv.hgetall<Record<string, string>>(`vault:note:${relativePath}`);
+    if (!noteData) {
+      await kv.srem("vault:pending-creates", relativePath);
+      continue;
+    }
+
+    const diskPath = path.join(VAULT_PATH, relativePath);
+
+    // Skip if file already exists on disk
+    if (fs.existsSync(diskPath)) {
+      await kv.srem("vault:pending-creates", relativePath);
+      continue;
+    }
+
+    // Prefer rawContent; fall back to reconstructing frontmatter
+    let content = noteData.rawContent;
+    if (!content && noteData.content) {
+      const name = noteData.name || path.basename(relativePath, ".md");
+      const tags: string[] = noteData.tags ? JSON.parse(noteData.tags) : [];
+      const created = noteData.modifiedAt?.slice(0, 10) || new Date().toISOString().slice(0, 10);
+      const frontmatter = [
+        "---",
+        `title: "${name}"`,
+        `created: ${created}`,
+        "source: cortex-chat",
+        "tags:",
+        ...tags.map((t: string) => `  - ${t.replace(/^#/, "")}`),
+        "---",
+      ].join("\n");
+      content = frontmatter + "\n\n" + noteData.content + "\n";
+    }
+
+    if (!content) {
+      await kv.srem("vault:pending-creates", relativePath);
+      continue;
+    }
+
+    try {
+      const dir = path.dirname(diskPath);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(diskPath, content, "utf-8");
+
+      // Set hash so runSync() skips this file as "unchanged"
+      const hash = md5(content);
+      await kv.setJSON(`vault:hash:${relativePath}`, hash);
+      await kv.srem("vault:pending-creates", relativePath);
+
+      written++;
+      paths.push(relativePath);
+    } catch (err) {
+      console.error(`[pullPending] Failed to write ${relativePath}:`, err);
+    }
+  }
+
+  return { written, paths };
+}
+
+// ---------------------------------------------------------------------------
 // Main sync function
 // ---------------------------------------------------------------------------
 
