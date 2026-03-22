@@ -1,19 +1,23 @@
 #!/usr/bin/env npx tsx
 /**
- * Vault Sync Script
+ * Vault Sync Script (Bidirectional)
  *
  * Reads the local Obsidian vault, computes MD5 hashes for incremental sync,
  * and pushes note content to Upstash Redis + embeddings to Upstash Vector.
  *
+ * In watch mode, also polls Redis every 15s for notes created in the Cortex
+ * web app and writes them to the local vault.
+ *
  * Usage:
  *   npm run sync          # one-time sync
- *   npm run sync:watch    # initial sync + watch for changes
+ *   npm run sync:watch    # bidirectional watch mode (vault↔Redis)
  *
  * Environment: requires VAULT_PATH, KV_REST_API_URL, KV_REST_API_TOKEN,
  *              UPSTASH_VECTOR_REST_URL, UPSTASH_VECTOR_REST_TOKEN, VOYAGE_API_KEY
  */
 
-import { runSync } from "../lib/sync";
+import path from "path";
+import { runSync, pullPending } from "../lib/sync";
 
 const VAULT_PATH = process.env.VAULT_PATH;
 const watchMode = process.argv.includes("--watch");
@@ -43,10 +47,14 @@ async function main() {
   console.log(`  Total words: ${result.totalWords.toLocaleString()}`);
 
   if (watchMode) {
-    console.log(`\nStarting watch mode on ${VAULT_PATH}...`);
+    console.log(`\nStarting bidirectional watch mode on ${VAULT_PATH}...`);
     const { watch } = await import("chokidar");
 
+    // Track files recently written by pullPending so chokidar skips them
+    const recentPulls = new Set<string>();
+
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let syncing = false;
 
     const watcher = watch(VAULT_PATH!, {
       ignored: /(^|[/\\])\./,
@@ -54,19 +62,31 @@ async function main() {
       ignoreInitial: true,
     });
 
-    function scheduleSync() {
+    function scheduleSync(filePath: string) {
+      // Skip files we just pulled from Redis
+      const relative = path.relative(VAULT_PATH!, filePath);
+      if (recentPulls.has(relative)) return;
+
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(async () => {
+        if (syncing) return;
+        syncing = true;
+        // Snapshot recentPulls before sync — only these get cleared after.
+        // New paths added by pullPending during sync are preserved.
+        const pullSnapshot = new Set(recentPulls);
         console.log(`\n[${new Date().toISOString()}] Change detected, syncing...`);
         try {
           const start = Date.now();
-          const r = await runSync();
+          const r = await runSync({ skipPending: true });
           const ms = Date.now() - start;
           console.log(
             `  Sync done in ${(ms / 1000).toFixed(1)}s: +${r.created} ~${r.updated} -${r.deleted} =${r.unchanged}`
           );
         } catch (err) {
           console.error("  Sync error:", err);
+        } finally {
+          syncing = false;
+          for (const p of pullSnapshot) recentPulls.delete(p);
         }
       }, 1000);
     }
@@ -75,7 +95,43 @@ async function main() {
     watcher.on("change", scheduleSync);
     watcher.on("unlink", scheduleSync);
 
-    console.log("Watching for changes... (Ctrl+C to stop)");
+    // Pull pending creates immediately, then every 15 seconds
+    console.log("Checking for pending notes from Cortex...");
+    try {
+      const initial = await pullPending();
+      if (initial.written > 0) {
+        for (const p of initial.paths) recentPulls.add(p);
+        console.log(`  Pulled ${initial.written} pending note(s) from Cortex`);
+      }
+    } catch (err) {
+      console.error("  Initial pull failed:", err);
+    }
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const { written, paths } = await pullPending();
+        if (written > 0) {
+          for (const p of paths) recentPulls.add(p);
+          console.log(
+            `\n[${new Date().toISOString()}] Pulled ${written} note(s) from Cortex`
+          );
+        }
+      } catch (err) {
+        console.error("[pullPending] Error:", err);
+      }
+    }, 15_000);
+
+    // Graceful shutdown
+    function shutdown() {
+      console.log("\nShutting down sync daemon...");
+      clearInterval(pollInterval);
+      watcher.close();
+      process.exit(0);
+    }
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+
+    console.log("Watching for changes + polling Redis every 15s... (Ctrl+C to stop)");
   }
 }
 
