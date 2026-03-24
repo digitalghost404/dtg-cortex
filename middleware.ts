@@ -3,6 +3,8 @@ import type { NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
 const COOKIE_NAME = "cortex-token";
+const REVOKE_CHECK_COOKIE = "cortex-rc";
+const REVOKE_CHECK_INTERVAL_SEC = 300; // 5 minutes
 
 function getJwtSecret(): Uint8Array {
   const secret = process.env.JWT_SECRET;
@@ -32,23 +34,26 @@ async function isTokenRevoked(jti: string): Promise<boolean> {
   }
 }
 
-async function isAuthenticated(req: NextRequest): Promise<boolean> {
+async function isAuthenticated(
+  req: NextRequest
+): Promise<{ authed: boolean; didRevocationCheck: boolean }> {
   const token = req.cookies.get(COOKIE_NAME)?.value;
-  if (!token) return false;
+  if (!token) return { authed: false, didRevocationCheck: false };
   try {
     const { payload } = await jwtVerify(token, getJwtSecret(), {
       issuer: "cortex",
       audience: "cortex-owner",
     });
 
-    // Check revocation list in Redis
-    if (payload.jti && (await isTokenRevoked(payload.jti))) {
-      return false;
+    // Skip revocation check if we verified recently (cached via cookie)
+    const recentlyChecked = !!req.cookies.get(REVOKE_CHECK_COOKIE)?.value;
+    if (!recentlyChecked && payload.jti && (await isTokenRevoked(payload.jti))) {
+      return { authed: false, didRevocationCheck: true };
     }
 
-    return !!payload;
+    return { authed: !!payload, didRevocationCheck: !recentlyChecked };
   } catch {
-    return false;
+    return { authed: false, didRevocationCheck: false };
   }
 }
 
@@ -177,7 +182,7 @@ export async function middleware(req: NextRequest) {
   }
 
   // Everything else requires authentication
-  const authed = await isAuthenticated(req);
+  const { authed, didRevocationCheck } = await isAuthenticated(req);
 
   if (!authed) {
     // API routes return 401
@@ -193,7 +198,20 @@ export async function middleware(req: NextRequest) {
     return addSecurityHeaders(NextResponse.redirect(loginUrl));
   }
 
-  return addSecurityHeaders(NextResponse.next());
+  const res = addSecurityHeaders(NextResponse.next());
+
+  // Cache successful revocation check so we skip Redis for the next 5 minutes
+  if (didRevocationCheck) {
+    res.cookies.set(REVOKE_CHECK_COOKIE, "1", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "strict",
+      maxAge: REVOKE_CHECK_INTERVAL_SEC,
+      path: "/",
+    });
+  }
+
+  return res;
 }
 
 export const config = {

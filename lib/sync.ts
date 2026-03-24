@@ -177,7 +177,8 @@ export async function runSync(
     metadata: VectorMetadata;
   }> = [];
 
-  for (const fullPath of files) {
+  // Pre-read all files and compute hashes locally
+  const fileEntries = files.map((fullPath) => {
     const raw = fs.readFileSync(fullPath, "utf-8");
     const { data, content } = matter(raw);
     const relativePath = path.relative(VAULT_PATH, fullPath);
@@ -185,11 +186,21 @@ export async function runSync(
     const folder =
       path.dirname(relativePath) === "." ? "(root)" : path.dirname(relativePath);
     const stat = fs.statSync(fullPath);
+    const hash = md5(raw);
+    return { fullPath, raw, data, content, relativePath, name, folder, stat, hash };
+  });
+
+  // Batch-fetch all existing hashes in one Redis call (1 command instead of N)
+  const hashKeys = fileEntries.map((e) => `vault:hash:${e.relativePath}`);
+  const existingHashes = hashKeys.length > 0
+    ? await kv.mget<string>(...hashKeys)
+    : [];
+
+  for (let i = 0; i < fileEntries.length; i++) {
+    const { raw, data, content, relativePath, name, folder, stat, hash } = fileEntries[i];
+    const existingHash = existingHashes[i];
 
     localPaths.add(relativePath);
-
-    const hash = md5(raw);
-    const existingHash = await kv.getJSON<string>(`vault:hash:${relativePath}`);
 
     const words = countWords(content);
     totalWords += words;

@@ -35,6 +35,7 @@ const { kvMock, vectorMock } = vi.hoisted(() => ({
     smembers: vi.fn(),
     srem: vi.fn(),
     hgetall: vi.fn(),
+    mget: vi.fn(),
   },
   vectorMock: {
     upsertVectors: vi.fn(),
@@ -141,6 +142,7 @@ beforeEach(() => {
   // Redis defaults
   setupSmembers();
   kvMock.getJSON.mockResolvedValue(null);
+  kvMock.mget.mockResolvedValue([]);
   kvMock.hgetall.mockResolvedValue(null);
   kvMock.setJSON.mockResolvedValue("OK");
   kvMock.hset.mockResolvedValue(1);
@@ -329,7 +331,7 @@ describe("unchanged file", () => {
       .mockReset()
       .mockResolvedValueOnce(["stable.md"])
       .mockResolvedValueOnce([]);
-    kvMock.getJSON.mockResolvedValue(hash);
+    kvMock.mget.mockResolvedValue([hash]);
 
     const result = await runSync();
 
@@ -344,7 +346,7 @@ describe("unchanged file", () => {
       .mockReset()
       .mockResolvedValueOnce(["stable.md"])
       .mockResolvedValueOnce([]);
-    kvMock.getJSON.mockResolvedValue(hash);
+    kvMock.mget.mockResolvedValue([hash]);
 
     await runSync();
 
@@ -360,7 +362,7 @@ describe("unchanged file", () => {
       .mockReset()
       .mockResolvedValueOnce(["stable.md"])
       .mockResolvedValueOnce([]);
-    kvMock.getJSON.mockResolvedValue(hash);
+    kvMock.mget.mockResolvedValue([hash]);
 
     await runSync();
 
@@ -384,7 +386,7 @@ describe("updated file", () => {
       .mockReset()
       .mockResolvedValueOnce(["changed.md"])
       .mockResolvedValueOnce([]);
-    kvMock.getJSON.mockResolvedValue("old-hash-value");
+    kvMock.mget.mockResolvedValue(["old-hash-value"]);
   });
 
   it("increments updated when the path was already indexed", async () => {
@@ -676,7 +678,7 @@ describe("vector upsert", () => {
     (fs.readFileSync as unknown as Mock).mockReturnValue("raw text");
     setupMatter(["#vec"], content);
     kvMock.smembers.mockReset().mockResolvedValueOnce([]).mockResolvedValueOnce([]);
-    kvMock.getJSON.mockResolvedValue(null);
+    kvMock.mget.mockResolvedValue([null]);
   }
 
   it("calls the Voyage API when VOYAGE_API_KEY is set", async () => {
@@ -880,10 +882,7 @@ describe("SyncResult totals", () => {
       .mockResolvedValueOnce(["note-b.md", "note-c.md", "ghost.md"])
       .mockResolvedValueOnce([]);
     // Hash responses: note-a → null, note-b → matching, note-c → stale
-    kvMock.getJSON
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(noteB_hash)
-      .mockResolvedValueOnce("stale-c");
+    kvMock.mget.mockResolvedValue([null, noteB_hash, "stale-c"]);
     kvMock.hgetall.mockResolvedValue({
       name: "ghost",
       folder: "(root)",
@@ -1060,7 +1059,7 @@ describe("tag extraction via frontmatter keys", () => {
     (fs.readFileSync as unknown as Mock).mockReturnValue("raw");
     (matter as unknown as Mock).mockReturnValue({ data, content: "body" });
     kvMock.smembers.mockReset().mockResolvedValueOnce([]).mockResolvedValueOnce([]);
-    kvMock.getJSON.mockResolvedValue(null);
+    kvMock.mget.mockResolvedValue([null]);
     return runSync();
   }
 
